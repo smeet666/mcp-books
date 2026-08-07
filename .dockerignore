@@ -1,0 +1,11 @@
+node_modules
+dist
+bundle
+.git
+*.log
+# Anything a developer keeps locally that a published layer must never carry.
+.env
+.env.*
+.npmrc
+*.pem
+*.key

@@ -1,0 +1,78 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.smeet666/mcp-books",
+  "description": "Search the Internet Archive and the Library of Congress at once, inside scanned text.",
+  "websiteUrl": "https://github.com/smeet666/mcp-books#readme",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/smeet666/mcp-books/main/assets/icon-128.png",
+      "mimeType": "image/png",
+      "sizes": ["128x128"]
+    },
+    {
+      "src": "https://raw.githubusercontent.com/smeet666/mcp-books/main/assets/icon-512.png",
+      "mimeType": "image/png",
+      "sizes": ["512x512"]
+    }
+  ],
+  "repository": {
+    "url": "https://github.com/smeet666/mcp-books",
+    "source": "github"
+  },
+  "version": "1.0.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "mcp-books",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "BOOKS_USER_AGENT",
+          "description": "Identify your own client. The project's own identifier is appended, so an archive can always reach a human.",
+          "isRequired": false
+        },
+        {
+          "name": "BOOKS_MIN_INTERVAL_MS",
+          "description": "Widen the gap between two requests to one archive. Each archive keeps its own spacing when this is unset, and this can only make it wider.",
+          "isRequired": false
+        },
+        {
+          "name": "BOOKS_TIMEOUT_MS",
+          "description": "Deadline for one request to an archive, in milliseconds. Default 45000.",
+          "isRequired": false
+        },
+        {
+          "name": "BOOKS_MAX_RETRIES",
+          "description": "Retries on rate limiting and transient failures. Default 3.",
+          "isRequired": false
+        },
+        {
+          "name": "BOOKS_CACHE_TTL_MS",
+          "description": "In-memory cache lifetime, in milliseconds. Default 900000. Set 0 to turn it off.",
+          "isRequired": false
+        },
+        {
+          "name": "BOOKS_CACHE_MAX_ENTRIES",
+          "description": "In-memory cache size. Default 200.",
+          "isRequired": false
+        },
+        {
+          "name": "BOOKS_LOG_LEVEL",
+          "description": "silent, error, info or debug. Default error. Logs go to stderr.",
+          "isRequired": false
+        }
+      ]
+    },
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/smeet666/mcp-books/releases/download/v1.0.0/mcp-books-1.0.0.mcpb",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

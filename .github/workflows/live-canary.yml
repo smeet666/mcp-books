@@ -1,0 +1,106 @@
+# Nightly canary against the two real archives.
+#
+# The unit tests run against stand-in archives, so they cannot detect that the
+# Internet Archive renamed a field or that the Library of Congress changed the
+# shape of a newspaper row: the day either happens, they stay green while the
+# published server is broken for everyone. This job is the only thing that
+# notices, and it opens an issue when it fails.
+#
+# It is deliberately separate from CI: it depends on third-party services, so a
+# failure here means "an archive moved", never "this pull request is bad".
+
+name: Live canary
+
+on:
+  schedule:
+    # 02:44 UTC, off the hour and clear of the other scheduled jobs.
+    - cron: "44 2 * * *"
+  workflow_dispatch:
+
+# A single run at a time, so a slow night cannot overlap with the next one.
+concurrency:
+  group: live-canary
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Needed to open the issue that reports a broken contract.
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run the live canary
+        env:
+          BOOKS_LIVE: "1"
+          # Slower than each archive's own spacing: a scheduled job has no user
+          # waiting, one archive is a non-profit and the other a public
+          # institution, and both serve everyone free of charge.
+          BOOKS_MIN_INTERVAL_MS: "8000"
+          # Generous: a canary must fail on a changed contract, not on a slow night.
+          BOOKS_TIMEOUT_MS: "90000"
+          BOOKS_LOG_LEVEL: info
+        run: npm run test:live
+
+      - name: Report a broken canary
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = "Live canary failing: one of the two archives may have changed";
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              "The nightly live canary failed. Either the Internet Archive or the Library of Congress",
+              "changed something this server reads, or one of them was unreachable from the runner.",
+              "",
+              `Run: ${runUrl}`,
+              "",
+              "The assertion messages name the archive and the behaviour that moved. The reading of each",
+              "archive lives in its own published client library, so a parsing fix usually means releasing",
+              "that library and raising the version this server depends on, rather than editing anything",
+              "here.",
+              "",
+              "Four assertions deserve particular attention, because each of them holds up a claim every",
+              "answer makes. One checks that the full-text index which publishes no leaf number still",
+              "publishes none, since a leaf appearing where the server reports null would make every",
+              "citation from that archive wrong in the other direction. One checks that the index which",
+              "does publish a leaf still does. One checks that a matched passage is still told apart from",
+              "the opening of a page, which is what stops an excerpt being quoted as the match when it",
+              "carries the start of the page instead. And one checks that a record no archive holds still",
+              "comes back as an absence carrying a code, rather than as an empty record.",
+              "",
+              "A failure on one archive alone is worth reading closely: the merged answer is supposed to",
+              "survive it and name which archive was missing, so a canary that goes red on both halves at",
+              "once is a different problem from one that goes red on one.",
+            ].join("\n");
+
+            // Reuse the open issue rather than filing one every night.
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: "live-canary",
+            });
+
+            if (existing.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                body: `Still failing as of ${new Date().toISOString()}. ${runUrl}`,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ["live-canary"],
+              });
+            }

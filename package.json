@@ -1,0 +1,78 @@
+{
+  "name": "mcp-books",
+  "version": "1.0.0",
+  "description": "MCP server that searches the Internet Archive and the Library of Congress at once, inside scanned text and across catalogues. No API key required.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mcp-server",
+    "books",
+    "archives",
+    "full-text-search",
+    "internet-archive",
+    "library-of-congress",
+    "newspapers",
+    "ocr"
+  ],
+  "homepage": "https://github.com/smeet666/mcp-books#readme",
+  "bugs": {
+    "url": "https://github.com/smeet666/mcp-books/issues"
+  },
+  "funding": {
+    "type": "buymeacoffee",
+    "url": "https://buymeacoffee.com/smeet666"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/smeet666/mcp-books.git"
+  },
+  "license": "MIT",
+  "author": "Damien Bouissou",
+  "type": "module",
+  "bin": {
+    "mcp-books": "dist/index.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/sources/client.d.ts",
+      "import": "./dist/sources/client.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "mcpName": "io.github.smeet666/mcp-books",
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run test/unit",
+    "test:live": "vitest run test/live --testTimeout=180000",
+    "format": "prettier --write .",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run build",
+    "start": "node dist/index.js",
+    "inspector": "npx @modelcontextprotocol/inspector node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "mcp-archiveorg": "^1.3.0",
+    "mcp-libraryofcongress": "^1.1.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "prettier": "^3.9.6",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}
