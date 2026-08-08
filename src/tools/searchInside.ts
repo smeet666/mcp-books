@@ -20,6 +20,7 @@ import {
   creditLine,
   hitSchema,
   ok,
+  queryNotes,
   quoteForeign,
   reportNotes,
   reportSchema,
@@ -43,6 +44,8 @@ export const searchInsideDescription = [
   "A match also carries 'excerpt_kind'. 'passage' is the text around the words that matched. 'page_opening' is the start of the page, sent because the machine-read text that came back stops before the searched words appear, so it does not carry the match. The notes say how many excerpts are openings.",
   "Every count is that archive's own and counts something of its own: documents in one place, leaves in another. They are never added together, and there is no total across archives.",
   "Rows are interleaved one archive at a time. Nothing ranks them against each other and nothing orders them by date, because a year is measured on different things in each archive.",
+  "Matches whose excerpt carries the searched words are placed before matches whose excerpt is a 'page_opening' and carries them nowhere. That rests on what each row states about its own excerpt rather than on any score, no match is ever dropped for it, and the interleaving holds inside each of the two groups.",
+  "These indexes require every word given to appear, so a question written as a sentence returns nothing on a work the archives hold several copies of. Shorter and differently spelled wordings are therefore derived from the query and asked for their union, which costs nothing extra when the words as asked already answer. Every wording sent is named in 'per_source' with what it returned, and 'fan_out' turns the derivation off.",
   "Use search_items for a work by its title, its creator or its subject: this tool reads the text on the pages and knows nothing of a catalogue, so a title given here finds every book that happens to mention it and misses the book itself.",
   "Answers take several seconds, because one of the archives publishes a request ceiling this server keeps to. A slow answer is the pacing, not a stall.",
 ].join(" ");
@@ -87,6 +90,12 @@ export const searchInsideInput = strictInput({
     .describe(
       "Passages to keep per match. A long work matches in several places, and the later ones rarely say anything the first did not.",
     ),
+  fan_out: z
+    .boolean()
+    .default(true)
+    .describe(
+      "Whether to derive shorter and differently spelled wordings from the query and ask each archive for the union of what they return. These indexes require every word given to appear, so a question written as a sentence returns nothing while two of its words return a great deal. An archive is asked a derived wording only when the words as asked did not return as many rows as 'limit', so a query that works costs one request. Set false to send exactly the words given. 'per_source' names every wording, sent or not.",
+    ),
   sources: z
     .array(z.enum(SOURCE_VALUES))
     .optional()
@@ -106,6 +115,12 @@ export const searchInsideOutput = z.object({
       "Matches in this answer, across every archive. It is a count of what came back, never a total of what exists.",
     ),
   per_source: z.array(reportSchema),
+  queries_run: z
+    .number()
+    .int()
+    .describe(
+      "Requests this server sent for this answer, counting every wording on every archive. Each archive's own wordings are in 'per_source'.",
+    ),
   order: z.string().describe("How the list was built, in words."),
   excerpt_kinds: z
     .object({
@@ -134,12 +149,13 @@ export async function runSearchInside(
         page: args.page,
         maxExcerptChars: args.max_excerpt_chars,
         maxExcerptsPerMatch: args.max_excerpts_per_match,
+        fanOut: args.fan_out,
       },
       args.sources as readonly SourceId[] | undefined,
     );
 
     const hits = merged.hits.map(toHitPayload);
-    const notes = reportNotes(merged.reports);
+    const notes = [...queryNotes(merged.reports), ...reportNotes(merged.reports)];
 
     const answered = merged.reports.filter((report) => report.status === "answered");
     const contributed = merged.reports.filter((report) => report.count > 0);
@@ -163,11 +179,29 @@ export async function runSearchInside(
         .reduce((total, hit) => total + hit.excerpts.length, 0),
     };
 
+    // Matches are counted apart from excerpts because one match carries several
+    // excerpts, and the order below moves matches.
+    const carrying = hits.filter((hit) => hit.excerpt_kind === "passage").length;
+    const opening = hits.length - carrying;
+    const partitioned = carrying > 0 && opening > 0;
+
     if (excerptKinds.page_opening > 0) {
-      const matches = hits.filter((hit) => hit.excerpt_kind === "page_opening").length;
       const total = excerptKinds.passage + excerptKinds.page_opening;
+      // The placement rides on the sentence that already explains what an
+      // opening is, rather than arriving as a note of its own. The block a
+      // client renders holds a fixed amount of qualifying prose, and a second
+      // note here evicts the one saying how to read the next page or the one
+      // saying every excerpt is machine-read.
+      //
+      // It is said only where it changed something. An answer whose matches are
+      // all of one kind was placed by nothing, and describing a partition there
+      // would tell a reader some of these excerpts carry the words when none
+      // does. The full account of the order is in 'order'.
+      const placed = partitioned
+        ? ", and those matches are listed after the ones that carry them"
+        : "";
       notes.push(
-        `${excerptKinds.page_opening} of the ${total} excerpts here ${excerptKinds.page_opening === 1 ? "is" : "are"} the opening of a page rather than the passage that matched, across ${matches} ${matches === 1 ? "match" : "matches"}. The searched words sit further down those pages than the text this server received, so quoting one of them does not quote the match: follow source_url to read the page.`,
+        `${excerptKinds.page_opening} of the ${total} excerpts here ${excerptKinds.page_opening === 1 ? "is" : "are"} the opening of a page rather than the passage that matched, across ${opening} ${opening === 1 ? "match" : "matches"}${placed}. The searched words sit further down those pages than the text this server received, so quoting one of them does not quote the match: follow source_url to read the page.`,
       );
     }
 
@@ -198,12 +232,26 @@ export async function runSearchInside(
       );
     }
 
-    const order =
+    const order = [
       contributed.length > 1
         ? "One match from each archive in turn, in the order each archive returned them. Nothing ranks them against each other, and nothing orders them by date: the archives measure a year on different things."
         : contributed.length === 1
           ? `Every match came from ${contributed[0]!.name}, in the order it returned them.`
-          : "No archive contributed a match.";
+          : "No archive contributed a match.",
+      merged.reports.some((report) => report.queries.filter((entry) => entry.ran).length > 1)
+        ? "An archive asked more than one wording has its matches in the order those wordings were sent, which is this server's own order over what it received and no archive's judgement of relevance."
+        : "",
+      partitioned
+        ? "Matches whose excerpt carries the searched words come before matches whose excerpt is the opening of a page and carries them nowhere. That is what each row says of itself rather than a score, and the order above holds inside each of the two groups."
+        : "",
+    ]
+      .filter((part) => part !== "")
+      .join(" ");
+
+    const queriesRun = merged.reports.reduce(
+      (total, report) => total + report.queries.filter((entry) => entry.ran).length,
+      0,
+    );
 
     const body = renderBody(hits, args, merged.asked, answered.length, notes, profiles);
 
@@ -216,6 +264,7 @@ export async function runSearchInside(
         per_source: merged.reports.map((report) =>
           toReportPayload(report, contextFor(profiles.get(report.source))),
         ),
+        queries_run: queriesRun,
         order,
         excerpt_kinds: excerptKinds,
         notes,
@@ -224,7 +273,9 @@ export async function runSearchInside(
       {
         notes,
         credit: creditLine(
-          contributed.map((report) => ({ attribution: `Source: ${report.name}` })),
+          contributed.map((report) => ({
+            attribution: report.attribution ?? `Source: ${report.name}`,
+          })),
         ),
       },
     );
@@ -240,6 +291,8 @@ export function contextFor(profile: SourceProfile | undefined) {
         yearMeans: profile.yearMeans,
         publishesPageNumber: profile.publishesPageNumber,
         corpus: profile.insideCorpus,
+        searchesOn: profile.searchesOn,
+        rowDescribes: profile.rowDescribes,
       }
     : {};
 }

@@ -12,6 +12,19 @@
  * ranked across them, no count is added to another, and no order is imposed
  * that would need a quantity they share.
  *
+ * One thing does place a match ahead of another, and it is a property the row
+ * states rather than a score: an excerpt that carries the searched words comes
+ * before an excerpt that is the opening of a page and does not carry them.
+ *
+ * A question is also put in more than one wording. These indexes require every
+ * word given to appear, so a question written as a sentence comes back empty on
+ * a work the archives hold several copies of, and that emptiness is
+ * indistinguishable from a corpus holding nothing. Each archive is therefore
+ * offered a short ladder of wordings derived from the query, in sequence so its
+ * pacing is kept, stopping as soon as the rows asked for are found. What the
+ * union holds is deduplicated on the identifier this server hands out, and
+ * every wording travels with the answer so it can be redone by hand.
+ *
  * An archive that fails is reported as an archive that failed, with the moment
  * that failed. It is never folded into the answer as an absence: "the Library
  * of Congress was unreachable" and "the Library of Congress holds no such
@@ -29,23 +42,30 @@ import {
 import { BooksError, invalidInput, timeout as timedOut, toBooksError } from "../errors.js";
 import type {
   Capability,
+  CatalogueFilter,
+  DroppedFilter,
   Hit,
   ItemDetail,
   ItemRow,
   MergedHits,
   MergedItems,
+  QueryAttempt,
   SourceId,
   SourceProfile,
   SourceReport,
 } from "../types.js";
-import type { CatalogueQuery, SortKey, SourceAdapter } from "./adapter.js";
+import type { CatalogueQuery, ReadRows, SortKey, SourceAdapter } from "./adapter.js";
 import { resolveId } from "./ids.js";
 import type { ResolvedId } from "./ids.js";
 import { buildSources, pacingFor, selectSources, splitByCapability } from "./registry.js";
 import type { Absence, Readers } from "./registry.js";
+import { MAX_QUERIES_PER_SOURCE, deriveQueries } from "./variants.js";
+import type { QueryVariant } from "./variants.js";
 
 export type {
   Capability,
+  CatalogueFilter,
+  DroppedFilter,
   ExcerptKind,
   Hit,
   ItemDetail,
@@ -67,12 +87,16 @@ export type {
   SourceAdapter,
 } from "./adapter.js";
 export type { ArchiveReader } from "./archive.js";
+export type { BnfReader } from "./bnf.js";
 export type { LocReader } from "./loc.js";
 export type { Absence, Readers } from "./registry.js";
-export { CAPABILITIES } from "../types.js";
+export { CAPABILITIES, CATALOGUE_FILTERS } from "../types.js";
 export { SORT_KEYS } from "./adapter.js";
 export { MEDIA_TYPES, SOURCE_IDS, SOURCE_PROFILES, splitByCapability } from "./registry.js";
 export { namespacedId, resolveId } from "./ids.js";
+export { MAX_QUERIES_PER_SOURCE, deriveQueries } from "./variants.js";
+export type { QueryVariant } from "./variants.js";
+export type { QueryAttempt } from "../types.js";
 
 export interface BooksClientOptions {
   config?: Partial<Config>;
@@ -178,8 +202,34 @@ interface Attempt<T> {
   reportedTotalMeans: string | null;
   orderedOn: string | null;
   mediaTypeAsked: string | null;
+  /** What the archive said about rows past this page, where it says instead of counting. */
+  hasMore: boolean | null;
+  attribution: string | null;
   skipped: number | null;
   error: { code: string; message: string; hint?: string } | null;
+  /** Every wording derived for this archive, sent or withheld. */
+  queries: QueryAttempt[];
+  /**
+   * Rows the words as asked returned on their own.
+   *
+   * The archive's own total counts what that wording matches across every page,
+   * so it is only comparable with the rows that wording brought back. Comparing
+   * it against a union built out of several wordings would count rows the total
+   * never counted.
+   */
+  primaryCount: number;
+}
+
+/** Whether an answer may be built out of more than the words as asked. */
+export interface FanOut {
+  /** False sends the words as asked and nothing else. */
+  enabled: boolean;
+  /**
+   * The page being read. Derived wordings run on the first page alone: each
+   * archive pages each wording on its own count, so page three of a union is
+   * not the third page of anything a caller could ask for by hand.
+   */
+  page: number;
 }
 
 /**
@@ -204,6 +254,7 @@ function reportOf<T>(
   count: number,
   page: number,
   limit: number,
+  filtersDropped: DroppedFilter[] = [],
 ): SourceReport {
   return {
     source: attempt.source.id,
@@ -217,7 +268,16 @@ function reportOf<T>(
     skipped: attempt.skipped,
     orderedOn: attempt.orderedOn,
     mediaTypeAsked: attempt.mediaTypeAsked,
-    moreOnThisArchive: attempt.error ? null : moreBeyond(attempt.reportedTotal, page, limit, count),
+    attribution: attempt.attribution ?? attempt.source.attribution,
+    filtersDropped,
+    // An archive that says whether anything follows this page is taken at its
+    // word; one that publishes a count instead has the question answered from
+    // the count and the page, which is the only way to ask it there.
+    moreOnThisArchive: attempt.error
+      ? null
+      : (attempt.hasMore ??
+        moreBeyond(attempt.reportedTotal, page, limit, Math.min(attempt.primaryCount, limit))),
+    queries: attempt.queries,
     cached: attempt.cached,
     error: attempt.error,
   };
@@ -237,10 +297,51 @@ function absentReport(absence: Absence): SourceReport {
     skipped: 0,
     orderedOn: null,
     mediaTypeAsked: null,
+    // An archive that was never asked published nothing here, and a credit
+    // naming it would say it had.
+    attribution: null,
+    filtersDropped: [],
     moreOnThisArchive: null,
+    queries: [],
     cached: false,
     error: null,
   };
+}
+
+/**
+ * The narrowings a caller asked for that one archive's catalogue cannot apply.
+ *
+ * They are worked out before anything is sent, because a narrowing an archive
+ * cannot apply is never sent to it: the alternative is an answer that reports a
+ * criterion as applied by every archive in it while one of them was asked a
+ * question with no criterion in it at all.
+ */
+export function droppedFilters(
+  source: SourceProfile,
+  wanted: readonly CatalogueFilter[],
+): DroppedFilter[] {
+  return wanted
+    .filter((filter) => !source.honours.includes(filter))
+    .map((filter) => ({
+      filter,
+      because:
+        source.cannotFilter[filter] ??
+        `${source.name} does not apply this, and no reason was recorded for it.`,
+    }));
+}
+
+/** The narrowings this call actually carries, named as a caller names them. */
+function filtersAsked(options: {
+  yearFrom?: number;
+  yearTo?: number;
+  sort: SortKey;
+}): CatalogueFilter[] {
+  const wanted: CatalogueFilter[] = [];
+  if (options.yearFrom !== undefined || options.yearTo !== undefined) wanted.push("year_range");
+  // Relevance is what an archive does when nothing is asked of it, so asking
+  // for it narrows nothing and there is nothing to report as dropped.
+  if (options.sort !== "relevance") wanted.push("sort");
+  return wanted;
 }
 
 /**
@@ -263,6 +364,29 @@ export function interleave<T>(groups: T[][]): T[] {
     }
   }
   return merged;
+}
+
+/**
+ * Put matches whose excerpt carries the searched words before matches whose
+ * excerpt does not.
+ *
+ * An archive sends the opening of a page instead of the passage when the
+ * machine-read text it returned stops before the searched words appear, and it
+ * says so on the row. Such an excerpt does not hold the match, so a reader who
+ * takes it for one is reading text that has nothing to do with the question.
+ *
+ * The property this orders on is one each row states about itself, so no score
+ * is compared across archives and no relevance is invented. The partition is
+ * stable, which leaves the one-from-each-archive order standing inside each of
+ * the two groups. Nothing is removed: a row sending an opening still names a
+ * page where the words were found, and it stays in the answer after the rows
+ * that show them.
+ */
+export function carryingTheWordsFirst(hits: readonly Hit[]): Hit[] {
+  return [
+    ...hits.filter((hit) => hit.excerptKind === "passage"),
+    ...hits.filter((hit) => hit.excerptKind !== "passage"),
+  ];
 }
 
 /** What one archive was asked to look under, or why it was not asked at all. */
@@ -404,6 +528,8 @@ export class BooksClient {
       page: number;
       maxExcerptChars: number;
       maxExcerptsPerMatch: number;
+      /** Left unset, further wordings are derived and asked for their union. */
+      fanOut?: boolean;
     },
     wanted?: readonly SourceId[],
   ): Promise<MergedHits> {
@@ -418,14 +544,16 @@ export class BooksClient {
     const chosen = selectSources(this.sources, wanted);
     const { able, absent } = splitByCapability(chosen, "search_inside");
     const limit = boundedLimit(options.limit);
+    const page = Math.max(1, Math.trunc(options.page));
+    const ladder = this.ladderFor(trimmed, { enabled: options.fanOut !== false, page });
 
     const attempts = await Promise.all(
       able.map((source) =>
-        this.attempt<Hit>(source, null, () =>
+        this.askLadder<Hit>(source, ladder, limit, null, (query) =>
           source.searchInside!({
-            query: trimmed,
+            query,
             limit,
-            page: Math.max(1, Math.trunc(options.page)),
+            page,
             maxExcerptChars: options.maxExcerptChars,
             maxExcerptsPerMatch: options.maxExcerptsPerMatch,
           }),
@@ -433,10 +561,9 @@ export class BooksClient {
       ),
     );
 
-    const page = Math.max(1, Math.trunc(options.page));
     const groups = attempts.map((attempt) => attempt.rows.slice(0, limit));
     return {
-      hits: interleave(groups),
+      hits: carryingTheWordsFirst(interleave(groups)),
       reports: [
         ...attempts.map((attempt, index) => reportOf(attempt, groups[index]!.length, page, limit)),
         ...absent.map(absentReport),
@@ -455,6 +582,8 @@ export class BooksClient {
       sort: SortKey;
       limit: number;
       page: number;
+      /** Left unset, further wordings are derived and asked for their union. */
+      fanOut?: boolean;
     },
     wanted?: readonly SourceId[],
   ): Promise<MergedItems> {
@@ -471,29 +600,51 @@ export class BooksClient {
     const byVocabulary = chooseMediaTypes(byCapability.able, options.mediaType);
     const limit = boundedLimit(options.limit);
     const able = byCapability.able.filter((source) => byVocabulary.asked.has(source.id));
+    const page = Math.max(1, Math.trunc(options.page));
+    const ladder = this.ladderFor(trimmed, { enabled: options.fanOut !== false, page });
+
+    const narrowings = filtersAsked(options);
+    const dropped = new Map(able.map((source) => [source.id, droppedFilters(source, narrowings)]));
 
     const attempts = await Promise.all(
       able.map((source) => {
         const mediaType = byVocabulary.asked.get(source.id) ?? null;
-        const request: CatalogueQuery = {
-          query: trimmed,
-          mediaType,
-          ...(options.yearFrom === undefined ? {} : { yearFrom: options.yearFrom }),
-          ...(options.yearTo === undefined ? {} : { yearTo: options.yearTo }),
-          sort: options.sort,
-          limit,
-          page: Math.max(1, Math.trunc(options.page)),
-        };
-        return this.attempt<ItemRow>(source, mediaType, () => source.searchItems!(request));
+        const missing = new Set((dropped.get(source.id) ?? []).map((entry) => entry.filter));
+        return this.askLadder<ItemRow>(source, ladder, limit, mediaType, (query) => {
+          const request: CatalogueQuery = {
+            query,
+            mediaType,
+            // A narrowing this archive cannot apply is left out of the request
+            // rather than sent and ignored, so what it received and what the
+            // answer says it received are the same thing.
+            ...(options.yearFrom === undefined || missing.has("year_range")
+              ? {}
+              : { yearFrom: options.yearFrom }),
+            ...(options.yearTo === undefined || missing.has("year_range")
+              ? {}
+              : { yearTo: options.yearTo }),
+            sort: missing.has("sort") ? null : options.sort,
+            limit,
+            page,
+          };
+          return source.searchItems!(request);
+        });
       }),
     );
 
-    const page = Math.max(1, Math.trunc(options.page));
     const groups = attempts.map((attempt) => attempt.rows.slice(0, limit));
     return {
       rows: interleave(groups),
       reports: [
-        ...attempts.map((attempt, index) => reportOf(attempt, groups[index]!.length, page, limit)),
+        ...attempts.map((attempt, index) =>
+          reportOf(
+            attempt,
+            groups[index]!.length,
+            page,
+            limit,
+            dropped.get(attempt.source.id) ?? [],
+          ),
+        ),
         ...[...byCapability.absent, ...byVocabulary.absent].map(absentReport),
       ],
       asked: attempts.length,
@@ -543,7 +694,12 @@ export class BooksClient {
           skipped: 0,
           orderedOn: null,
           mediaTypeAsked: null,
+          attribution: outcome.item.attribution,
+          // A read by identifier carries no narrowing to drop.
+          filtersDropped: [],
           moreOnThisArchive: null,
+          // A record is read by its identifier, so there is no wording to derive.
+          queries: [],
           cached: outcome.cached,
           error: null,
         },
@@ -560,60 +716,183 @@ export class BooksClient {
     }
   }
 
-  /** A failure here becomes a reported attempt rather than a throw, so one archive cannot end the call. */
-  private async attempt<T>(
-    source: SourceAdapter,
-    mediaTypeAsked: string | null,
-    work: () => Promise<{
-      rows: T[];
-      skipped: number;
-      reportedTotal: number | null;
-      reportedTotalMeans: string | null;
-      orderedOn: string | null;
-      cached: boolean;
-    }>,
-  ): Promise<Attempt<T>> {
-    try {
-      const read = await withDeadline(work(), this.deadlineFor(source), source);
-      if (read.skipped > 0) {
-        this.logger.warn(
-          `${source.name} sent ${read.skipped} row(s) this server could not read; they were left out.`,
-        );
-      }
+  /**
+   * The wordings this call will offer each archive, and how many it may send.
+   *
+   * The list is settled once for the whole call rather than per archive, so
+   * every archive is asked the same question in the same words and an answer
+   * holding rows from two of them is not two different questions merged.
+   */
+  private ladderFor(query: string, fanOut: FanOut): LadderPlan {
+    const derived = deriveQueries(query);
+    if (!fanOut.enabled) {
       return {
-        source,
-        rows: read.rows,
-        cached: read.cached,
-        reportedTotal: read.reportedTotal,
-        reportedTotalMeans: read.reportedTotalMeans,
-        orderedOn: read.orderedOn,
-        mediaTypeAsked,
+        variants: derived,
+        ceiling: 1,
+        withheldBecause:
+          "fan_out was off, so the words as asked were sent and no wording was derived from them",
+      };
+    }
+    if (fanOut.page > 1) {
+      return {
+        variants: derived,
+        ceiling: 1,
+        withheldBecause:
+          "beyond the first page only the words as asked are sent, because each archive pages each wording on a count of its own",
+      };
+    }
+    return {
+      variants: derived,
+      ceiling: MAX_QUERIES_PER_SOURCE,
+      withheldBecause: `the ceiling of ${MAX_QUERIES_PER_SOURCE} queries to one archive was reached`,
+    };
+  }
+
+  /**
+   * Put the wordings to one archive, one after another, and union what returns.
+   *
+   * They go out in sequence rather than together because the spacing this
+   * server owes an archive is per archive: firing three wordings at once would
+   * keep the letter of the interval on paper and none of it in practice.
+   *
+   * Three things end the sequence early. The ceiling, so a call cannot grow
+   * without bound. Enough rows to answer what the caller asked for, so the
+   * usual question costs exactly one request. And a failure, because an archive
+   * that is not answering is not one to send further wordings to, and its
+   * silence is reported as a failure rather than as an absence.
+   */
+  private async askLadder<T extends { id: string }>(
+    source: SourceAdapter,
+    plan: LadderPlan,
+    limit: number,
+    mediaTypeAsked: string | null,
+    work: (query: string) => Promise<ReadRows<T>>,
+  ): Promise<Attempt<T>> {
+    const queries: QueryAttempt[] = [];
+    const rows: T[] = [];
+    const seen = new Set<string>();
+    let first: ReadRows<T> | null = null;
+    let primaryCount = 0;
+    let cached = false;
+    let skipped: number | null = 0;
+    let error: Attempt<T>["error"] = null;
+    let stopped: string | null = null;
+
+    for (const [index, variant] of plan.variants.entries()) {
+      const withheld =
+        stopped ??
+        (index >= plan.ceiling
+          ? plan.withheldBecause
+          : index > 0 && rows.length >= limit
+            ? "the wordings already sent returned as many rows as were asked for"
+            : null);
+
+      if (withheld !== null) {
+        queries.push(unsent(variant, withheld));
+        continue;
+      }
+
+      try {
+        const read = await withDeadline(work(variant.query), this.deadlineFor(source), source);
+        let added = 0;
+        for (const row of read.rows) {
+          // Deduplication is on the identifier this server hands out, which
+          // names its archive: the same string from two archives is two
+          // records, and folding them together would drop one of them.
+          if (seen.has(row.id)) continue;
+          seen.add(row.id);
+          rows.push(row);
+          added += 1;
+        }
+        if (read.skipped > 0) {
+          this.logger.warn(
+            `${source.name} sent ${read.skipped} row(s) this server could not read; they were left out.`,
+          );
+        }
         // An answer served from a reader's cache carries the rows it kept and
         // no record of what was dropped while they were first read, so the
         // count is unknown here rather than zero.
-        skipped: read.cached ? null : read.skipped,
-        error: null,
-      };
-    } catch (error) {
-      const known = toBooksError(error);
-      this.logger.warn(`${source.name} did not answer: [${known.code}] ${known.message}`);
-      return {
-        source,
-        rows: [],
-        cached: false,
-        reportedTotal: null,
-        reportedTotalMeans: null,
-        orderedOn: null,
-        mediaTypeAsked,
-        skipped: 0,
-        error: {
+        if (read.cached) {
+          cached = true;
+          skipped = null;
+        } else if (skipped !== null) {
+          skipped += read.skipped;
+        }
+        if (first === null) {
+          first = read;
+          primaryCount = read.rows.length;
+        }
+        queries.push({
+          query: variant.query,
+          derivation: variant.derivation,
+          ran: true,
+          count: read.rows.length,
+          added,
+          notRunBecause: null,
+          error: null,
+        });
+      } catch (raised) {
+        const known = toBooksError(raised);
+        this.logger.warn(`${source.name} did not answer: [${known.code}] ${known.message}`);
+        const failure = {
           code: known.code,
           message: known.message,
           ...(known.details.hint ? { hint: known.details.hint } : {}),
-        },
-      };
+        };
+        queries.push({
+          query: variant.query,
+          derivation: variant.derivation,
+          ran: true,
+          count: null,
+          added: null,
+          notRunBecause: null,
+          error: failure,
+        });
+        // An archive that answered the words as asked has answered the
+        // question. A wording this server derived failing afterwards is a
+        // failure of that wording, and reporting it as an archive that did not
+        // answer would throw away rows the archive did give.
+        if (first === null) error = failure;
+        stopped = "the archive did not answer the wording before this one";
+      }
     }
+
+    return {
+      source,
+      rows,
+      cached,
+      reportedTotal: first?.reportedTotal ?? null,
+      reportedTotalMeans: first?.reportedTotalMeans ?? null,
+      orderedOn: first?.orderedOn ?? null,
+      mediaTypeAsked,
+      hasMore: first?.hasMore ?? null,
+      attribution: first?.attribution ?? null,
+      skipped,
+      error,
+      queries,
+      primaryCount,
+    };
   }
+}
+
+/** The wordings on offer for one call, and how many of them may be sent. */
+interface LadderPlan {
+  variants: readonly QueryVariant[];
+  ceiling: number;
+  /** Why a wording past the ceiling was left unsent, in words. */
+  withheldBecause: string;
+}
+
+function unsent(variant: QueryVariant, because: string): QueryAttempt {
+  return {
+    query: variant.query,
+    derivation: variant.derivation,
+    ran: false,
+    count: null,
+    added: null,
+    notRunBecause: because,
+    error: null,
+  };
 }
 
 function boundedLimit(limit: number): number {

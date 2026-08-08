@@ -10,7 +10,13 @@ export default defineConfig({
   clean: true,
   splitting: false,
   // Left external so a consumer resolves their own copies from node_modules.
-  external: ["@modelcontextprotocol/sdk", "zod", "mcp-archiveorg", "mcp-libraryofcongress"],
+  external: [
+    "@modelcontextprotocol/sdk",
+    "zod",
+    "mcp-archiveorg",
+    "mcp-libraryofcongress",
+    "mcp-databnf",
+  ],
   // src/index.ts opens with the shebang and esbuild keeps it on the entry
   // point; a global banner would also stamp it onto the library entry.
 });

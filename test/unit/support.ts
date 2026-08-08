@@ -23,6 +23,13 @@ import type {
   LocRecordSummary,
   LocReader,
 } from "../../src/sources/loc.js";
+import { bnfAdapter } from "../../src/sources/bnf.js";
+import type {
+  BnfEntityId,
+  BnfReader,
+  BnfWorkDetail,
+  BnfWorkSummary,
+} from "../../src/sources/bnf.js";
 
 /** A failure shaped the way an archive's own reader raises one. */
 export class FakeSourceError extends Error {
@@ -248,6 +255,118 @@ export const locRecordWithTerms: LocItemDetail = {
 };
 
 /* -------------------------------------------------------------------------- */
+/* A national library's catalogue, as a stand-in                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The moment the stand-in says its metadata came off the catalogue.
+ *
+ * It is a value the reader produces rather than a clock reading, so an answer
+ * that has to carry a date of retrieval stays identical from one pass to the
+ * next.
+ */
+export const BNF_RETRIEVED_AT = "2026-02-02T12:00:00.000Z";
+
+export const bnfWorkRows: BnfWorkSummary[] = [
+  {
+    id: "cb11940100c",
+    title: "Relation du voyage du Cormoran",
+    date: "1874",
+    creators: [{ id: "cb10000001x", name: "Pellisier, Aldous" }],
+    status: "established",
+    sourceUrl: "https://data.bnf.fr/ark:/12148/cb11940100c",
+  },
+  {
+    // A record a cataloguer has not settled, addressed under a digest that can
+    // change once they do.
+    id: "temp-work/8f14e45fce0a4b0d9c1d3f7a5b2c6e91",
+    title: "Le Cormoran, relation abrégée",
+    date: "[s.d.]",
+    creators: [],
+    status: "provisional",
+    sourceUrl: "https://data.bnf.fr/temp-work/8f14e45fce0a4b0d9c1d3f7a5b2c6e91/",
+  },
+];
+
+export const bnfWorkRecord: BnfWorkDetail = {
+  id: "cb11940100c",
+  title: "Relation du voyage du Cormoran",
+  label: "Relation du voyage du Cormoran",
+  date: "1874",
+  firstYear: 1874,
+  creators: [{ id: "cb10000001x", name: "Pellisier, Aldous" }],
+  languages: ["fre"],
+  forms: ["Récit de voyage"],
+  subjects: ["Voyages et découvertes"],
+  deweyClasses: ["910"],
+  status: "established",
+  statusStatement: null,
+  expressionCount: 3,
+  sameAs: {},
+  types: ["http://rdvocab.info/uri/schema/FRBRentitiesRDA/Work"],
+  truncated: false,
+  catalogueUrl: "https://catalogue.bnf.fr/ark:/12148/cb11940100c",
+  depictions: [
+    {
+      ark: "ark:/12148/btv1b8600000x",
+      url: "https://gallica.bnf.fr/ark:/12148/btv1b8600000x",
+      role: "depiction",
+      fromId: "cb11940100c",
+      fromTitle: "Relation du voyage du Cormoran",
+    },
+  ],
+  sourceUrl: "https://data.bnf.fr/ark:/12148/cb11940100c",
+};
+
+export interface FakeBnfSide {
+  fail?: Error;
+  failRecord?: Error;
+  rows?: BnfWorkSummary[];
+  hasMore?: boolean;
+  record?: BnfWorkDetail;
+  cached?: boolean;
+}
+
+export function fakeBnf(options: FakeBnfSide = {}): BnfReader {
+  return {
+    identify(input: string): BnfEntityId {
+      const digest = /^temp-work\/([0-9a-f]{32})$/i.exec(input.trim());
+      if (digest) {
+        return {
+          kind: "temp-work",
+          id: `temp-work/${digest[1]!.toLowerCase()}`,
+          iri: `http://data.bnf.fr/temp-work/${digest[1]!.toLowerCase()}/#about`,
+          pageUrl: `https://data.bnf.fr/temp-work/${digest[1]!.toLowerCase()}/`,
+        };
+      }
+      return {
+        kind: "ark",
+        id: input.trim().toLowerCase(),
+        iri: `http://data.bnf.fr/ark:/12148/${input.trim().toLowerCase()}#about`,
+        pageUrl: `https://data.bnf.fr/ark:/12148/${input.trim().toLowerCase()}`,
+      };
+    },
+    async searchWorks() {
+      if (options.fail) throw options.fail;
+      return {
+        data: { rows: options.rows ?? bnfWorkRows, hasMore: options.hasMore ?? true },
+        cached: options.cached ?? false,
+        retrievedAt: BNF_RETRIEVED_AT,
+      };
+    },
+    async getWork() {
+      if (options.fail) throw options.fail;
+      if (options.failRecord) throw options.failRecord;
+      return {
+        data: options.record ?? bnfWorkRecord,
+        cached: options.cached ?? false,
+        retrievedAt: BNF_RETRIEVED_AT,
+      };
+    },
+  };
+}
+
+/* -------------------------------------------------------------------------- */
 /* Wiring the stand-ins                                                        */
 /* -------------------------------------------------------------------------- */
 
@@ -267,6 +386,7 @@ export interface FakeSide<Hits, Rows, Record> {
 export interface FakeOptions {
   archive?: FakeSide<ArchiveInsideHit[], ArchiveItemSummary[], ArchiveItemDetail>;
   loc?: FakeSide<LocNewspaperHit[], LocRecordSummary[], LocItemDetail>;
+  bnf?: FakeBnfSide;
 }
 
 export function fakeArchive(options: NonNullable<FakeOptions["archive"]> = {}): ArchiveReader {
@@ -345,6 +465,7 @@ export function fakeClient(options: FakeOptions = {}): BooksClient {
     readers: {
       archive: fakeArchive(options.archive ?? {}),
       loc: fakeLoc(options.loc ?? {}),
+      bnf: fakeBnf(options.bnf ?? {}),
     },
   });
 }
@@ -371,6 +492,11 @@ export const standInProfile = {
     search_inside:
       "The route that searches the text of a document is closed to automated clients by this archive's robots file, so the text behind it is never read.",
   },
+  searchesOn: "titles, creators and subjects together",
+  rowDescribes: "a volume this archive holds",
+  honours: ["year_range", "sort"] as const,
+  cannotFilter: {},
+  creditNote: null,
   paceMs: 2000,
   paceReason: "this archive states no ceiling, so the spacing is politeness",
 };
@@ -379,6 +505,7 @@ export function standInAdapter(): SourceAdapter {
   return {
     ...standInProfile,
     answers: [...standInProfile.answers],
+    honours: [...standInProfile.honours],
     claims: () => null,
     async searchItems() {
       return {
@@ -397,6 +524,7 @@ export function standInAdapter(): SourceAdapter {
             downloads: null,
             location: [],
             online: true,
+            identifierProvisional: null,
           },
         ],
         skipped: 0,
@@ -412,7 +540,7 @@ export function standInAdapter(): SourceAdapter {
   };
 }
 
-/** A client reading three archives, one of which cannot be searched inside. */
+/** A client whose registry holds one archive that cannot be searched inside. */
 export function clientWithStandIn(options: FakeOptions = {}): BooksClient {
   return new BooksClient({
     logger: silentLogger,
@@ -426,7 +554,7 @@ export function clientWithStandIn(options: FakeOptions = {}): BooksClient {
 
 /** The archive adapters a test resolves identifiers against. */
 export function fakeSources(): SourceAdapter[] {
-  return [archiveAdapter(fakeArchive()), locAdapter(fakeLoc())];
+  return [archiveAdapter(fakeArchive()), locAdapter(fakeLoc()), bnfAdapter(fakeBnf())];
 }
 
 /** The text block a tool returned, which is what many clients render. */
@@ -452,6 +580,7 @@ export function insideArgs(
     page: 1,
     max_excerpt_chars: 300,
     max_excerpts_per_match: 2,
+    fan_out: true,
     ...over,
   };
 }
@@ -460,7 +589,7 @@ export function insideArgs(
 export function itemArgs(
   over: Partial<import("../../src/tools/searchItems.js").SearchItemsArgs> = {},
 ): import("../../src/tools/searchItems.js").SearchItemsArgs {
-  return { query: "cormorant", sort: "relevance", limit: 5, page: 1, ...over };
+  return { query: "cormorant", sort: "relevance", limit: 5, page: 1, fan_out: true, ...over };
 }
 
 /** The arguments a caller sends get_item, with the schema's defaults. */

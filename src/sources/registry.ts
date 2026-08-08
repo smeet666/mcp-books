@@ -11,6 +11,7 @@
  */
 
 import { ArchiveClient } from "mcp-archiveorg/client";
+import { BnfClient } from "mcp-databnf/client";
 import { LocClient } from "mcp-libraryofcongress/client";
 
 import type { Config } from "../config.js";
@@ -19,6 +20,8 @@ import type { Capability, SourceId, SourceProfile } from "../types.js";
 import type { SourceAdapter } from "./adapter.js";
 import { ARCHIVE_PROFILE, archiveAdapter } from "./archive.js";
 import type { ArchiveReader } from "./archive.js";
+import { BNF_PROFILE, bnfAdapter } from "./bnf.js";
+import type { BnfReader } from "./bnf.js";
 import { LOC_PROFILE, locAdapter } from "./loc.js";
 import type { LocReader } from "./loc.js";
 
@@ -30,10 +33,15 @@ import type { LocReader } from "./loc.js";
 export interface Readers {
   archive?: ArchiveReader;
   loc?: LocReader;
+  bnf?: BnfReader;
 }
 
 /** What this build registers, in the order an answer takes them. */
-export const SOURCE_PROFILES: readonly SourceProfile[] = [ARCHIVE_PROFILE, LOC_PROFILE];
+export const SOURCE_PROFILES: readonly SourceProfile[] = [
+  ARCHIVE_PROFILE,
+  LOC_PROFILE,
+  BNF_PROFILE,
+];
 
 /** The archives a caller can name, in the order an answer takes them. */
 export const SOURCE_IDS: readonly SourceId[] = SOURCE_PROFILES.map((profile) => profile.id);
@@ -85,7 +93,13 @@ export function buildSources(config: Config, readers: Readers = {}): SourceAdapt
       },
     });
 
-  return [archiveAdapter(archive), locAdapter(loc)];
+  const bnf =
+    readers.bnf ??
+    new BnfClient({
+      config: { ...shared, minIntervalMs: pacingFor(config, BNF_PROFILE.paceMs) },
+    });
+
+  return [archiveAdapter(archive), locAdapter(loc), bnfAdapter(bnf)];
 }
 
 /** The archives a caller asked for, in the registry's own order. */

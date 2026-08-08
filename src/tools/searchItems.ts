@@ -17,6 +17,7 @@ import { contextFor } from "./searchInside.js";
 import {
   creditLine,
   ok,
+  queryNotes,
   quoteForeign,
   reportNotes,
   reportSchema,
@@ -31,6 +32,9 @@ import type { ToolResult } from "./shared.js";
 const MEDIA_TYPE_VALUES = MEDIA_TYPES as unknown as [string, ...string[]];
 const SORT_VALUES = SORT_KEYS as unknown as [SortKey, ...SortKey[]];
 const SOURCE_VALUES = SOURCE_IDS as unknown as [string, ...string[]];
+
+/** The orders that run on a date field rather than on a title or a score. */
+const DATE_SORTS: ReadonlySet<SortKey> = new Set<SortKey>(["oldest", "newest"]);
 
 /**
  * Which archive files material under which name, spelled out for a caller.
@@ -49,7 +53,9 @@ export const searchItemsDescription = [
   "'media_type' keeps one name across the archives and a vocabulary per archive, because the same word does not name the same set of things twice. An archive that files nothing under the name you give is not asked and is named as absent, with its own names listed, rather than asked under a translation.",
   "An archive that keeps one catalogue per kind of material is asked for its default when you name none, and the answer says which catalogue that was.",
   "Rows are interleaved one archive at a time. No score orders them against each other, and 'sort' is applied inside each archive rather than across them: a year is the date of an edition in one place and the date on a catalogue record in another, so there is no date order that spans the answer.",
+  "'oldest' and 'newest' order on a date field carrying a year and no era, so a date before the common era is filed there as a year of this one, and a record stating no date is placed by a stand-in rather than by its age. The first row of a date order is therefore not established as the oldest or newest thing an archive holds, the notes count the rows carrying no year, and this server orders nothing itself.",
   "Every count in 'per_source' is that archive's own and counts something of its own. They are never added together, and there is no total across archives.",
+  "A catalogue index requires every word given to appear, and a name is filed under more than one spelling, so further wordings are derived from the query and asked for their union. It costs nothing extra when the words as asked already answer. Every wording sent is named in 'per_source' with what it returned, and 'fan_out' turns the derivation off.",
   "A row states no terms of reuse. Read the record with get_item for what that record itself says, and read silence as silence.",
   "Use search_inside for a phrase printed on a page: this tool reads catalogue records and knows nothing of what a book says, so a sentence given here matches only where a catalogue happens to carry it.",
   "Answers take several seconds, because one of the archives publishes a request ceiling this server keeps to.",
@@ -81,7 +87,7 @@ export const searchItemsInput = strictInput({
     .enum(SORT_VALUES)
     .default("relevance")
     .describe(
-      "Applied inside each archive. The merged list stays interleaved, because no order runs across archives.",
+      "Applied inside each archive. The merged list stays interleaved, because no order runs across archives. 'oldest' and 'newest' run on a date field carrying a year and no era, and a record stating no date is placed by a stand-in, so neither end of such an order is a claim about age.",
     ),
   limit: z
     .number()
@@ -97,6 +103,12 @@ export const searchItemsInput = strictInput({
     .max(100)
     .default(1)
     .describe("Which page of rows, from 1. Each archive is paged separately."),
+  fan_out: z
+    .boolean()
+    .default(true)
+    .describe(
+      "Whether to derive further wordings from the query and ask each archive for the union of what they return. A catalogue index requires every word given to appear, and a spelling of a name is not the only one a catalogue files it under. An archive is asked a derived wording only when the words as asked did not return as many rows as 'limit', so a query that works costs one request. Set false to send exactly the words given. 'per_source' names every wording, sent or not.",
+    ),
   sources: z
     .array(z.enum(SOURCE_VALUES))
     .optional()
@@ -114,6 +126,12 @@ export const searchItemsOutput = z.object({
     .int()
     .describe("Rows in this answer, across every archive. Never a total of what exists."),
   per_source: z.array(reportSchema),
+  queries_run: z
+    .number()
+    .int()
+    .describe(
+      "Requests this server sent for this answer, counting every wording on every archive. Each archive's own wordings are in 'per_source'.",
+    ),
   media_types: z
     .array(
       z.object({
@@ -150,12 +168,13 @@ export async function runSearchItems(
         sort: args.sort,
         limit: args.limit,
         page: args.page,
+        fanOut: args.fan_out,
       },
       args.sources as readonly SourceId[] | undefined,
     );
 
     const items = merged.rows.map(toRowPayload);
-    const notes = reportNotes(merged.reports);
+    const notes = [...queryNotes(merged.reports), ...reportNotes(merged.reports)];
 
     const answered = merged.reports.filter((report) => report.status === "answered");
     const contributed = merged.reports.filter((report) => report.count > 0);
@@ -191,6 +210,26 @@ export async function runSearchItems(
       );
     }
 
+    // A date order runs on a field holding a year and nothing else, so two
+    // things it cannot express decide where rows land. An era is absent, which
+    // files a date before the common era as a year of this one. And a record
+    // stating no date is given a stand-in at one end of the calendar, so it
+    // sits where no date put it. Both make the first row of a date order
+    // something other than the oldest or newest thing an archive holds, and a
+    // caller reading it as chronology is reading a claim nobody made.
+    if (DATE_SORTS.has(args.sort) && items.length > 0) {
+      notes.push(
+        `"${args.sort}" ordered each archive's own rows on a date field carrying a year and no era, so a date before the common era is filed there as a year of this one. A row can sit thousands of years from where its date belongs, and the first row is not established as the oldest or newest thing any archive holds. Read 'date' and the record itself before calling a row either.`,
+      );
+
+      const undated = items.filter((row) => row.year === null).length;
+      if (undated > 0) {
+        notes.push(
+          `${undated} of the ${items.length} rows here ${undated === 1 ? "carries" : "carry"} no year. An archive ordering on a date files a row without one under a stand-in rather than by its age, so where such a row lands says nothing about when it was made.`,
+        );
+      }
+    }
+
     if (args.sort !== "relevance" && contributed.length > 1) {
       notes.push(
         `Each archive ordered its own rows: ${answered
@@ -200,14 +239,58 @@ export async function runSearchItems(
       );
     }
 
-    if ((args.year_from !== undefined || args.year_to !== undefined) && answered.length > 1) {
+    // A narrowing an archive's catalogue cannot apply was never sent to it, and
+    // an answer merging its rows with rows that were narrowed has to name it.
+    // Otherwise the list reads as one where every row met the criterion.
+    for (const report of merged.reports) {
+      for (const dropped of report.filtersDropped) {
+        notes.push(
+          `${report.name} was not given the ${dropped.filter === "year_range" ? "year range" : `"${args.sort}" order`} asked for. ${dropped.because} Its rows are here unnarrowed by it, so one of them satisfying it does so by chance rather than because it was filtered.`,
+        );
+      }
+    }
+
+    // The archives that received the range are the only ones it can be said of.
+    const withRange = answered.filter(
+      (report) => !report.filtersDropped.some((dropped) => dropped.filter === "year_range"),
+    );
+    if ((args.year_from !== undefined || args.year_to !== undefined) && withRange.length > 1) {
       notes.push(
-        `The year range was applied inside each archive on its own reading of a year: ${answered
+        `The year range was applied inside each of ${withRange
           .map(
             (report) =>
-              `${report.name} on ${profiles.get(report.source)?.yearMeans ?? "a year it does not describe"}`,
+              `${report.name}, on ${profiles.get(report.source)?.yearMeans ?? "a year it does not describe"}`,
           )
           .join("; ")}. Two rows sharing a year were not necessarily dated by the same measure.`,
+      );
+    }
+
+    // The same words put to two catalogues are two questions when one reads the
+    // whole record and another reads a title. A caller who takes them for one
+    // question reads an archive's silence as a corpus holding nothing, when it
+    // holds the thing under a field that was never searched.
+    const fields = answered.map((report) => ({
+      name: report.name,
+      on: profiles.get(report.source)?.searchesOn ?? null,
+    }));
+    const stated = fields.filter(
+      (entry): entry is { name: string; on: string } => entry.on !== null,
+    );
+    if (stated.length > 1 && new Set(stated.map((entry) => entry.on)).size > 1) {
+      notes.push(
+        `The archives matched these words against different fields: ${stated
+          .map((entry) => `${entry.name} on ${entry.on}`)
+          .join("; ")}.`,
+      );
+      notes.push(
+        "An archive reading titles alone was asked a narrower question than one reading a whole record, so a person's name put to it comes back as the books about that person rather than the books by them.",
+      );
+    }
+
+    const provisional = items.filter((row) => row.identifier_provisional === true).length;
+    if (provisional > 0) {
+      notes.push(
+        `${provisional} of the ${items.length} rows here ${provisional === 1 ? "carries an identifier its archive calls" : "carry identifiers their archive calls"} provisional: it is held while a cataloguer settles the record and can change, so prefer a settled identifier when citing one.`,
       );
     }
 
@@ -223,12 +306,23 @@ export async function runSearchItems(
       );
     }
 
-    const order =
+    const order = [
       contributed.length > 1
         ? "One row from each archive in turn, in the order each archive returned them. No score orders them against each other and no date order spans them."
         : contributed.length === 1
           ? `Every row came from ${contributed[0]!.name}, in the order it returned them.`
-          : "No archive contributed a row.";
+          : "No archive contributed a row.",
+      merged.reports.some((report) => report.queries.filter((entry) => entry.ran).length > 1)
+        ? "An archive asked more than one wording has its rows in the order those wordings were sent, which is this server's own order over what it received and no archive's judgement of relevance."
+        : "",
+    ]
+      .filter((part) => part !== "")
+      .join(" ");
+
+    const queriesRun = merged.reports.reduce(
+      (total, report) => total + report.queries.filter((entry) => entry.ran).length,
+      0,
+    );
 
     const body =
       items.length > 0
@@ -246,6 +340,7 @@ export async function runSearchItems(
         per_source: merged.reports.map((report) =>
           toReportPayload(report, contextFor(profiles.get(report.source))),
         ),
+        queries_run: queriesRun,
         media_types: mediaTypes,
         order,
         notes,
@@ -253,8 +348,13 @@ export async function runSearchItems(
       body,
       {
         notes,
+        // Each archive's own credit, as that archive states it: one publishing
+        // on a condition carries the condition's date here, and two credits are
+        // never folded into one sentence about the answer.
         credit: creditLine(
-          contributed.map((report) => ({ attribution: `Source: ${report.name}` })),
+          contributed.map((report) => ({
+            attribution: report.attribution ?? `Source: ${report.name}`,
+          })),
         ),
       },
     );

@@ -145,7 +145,7 @@ describe("Hélène pastes a whole sentence in French into the catalogue", () => 
   it("gets an answer that says nothing came back rather than an empty one", async () => {
     const text = textOf(
       await runSearchItems(
-        fakeClient({ archive: { rows: [] }, loc: { rows: [] } }),
+        fakeClient({ archive: { rows: [] }, loc: { rows: [] }, bnf: { rows: [] } }),
         itemArgs({ query: "récits de voyages le long des côtes du nord" }),
       ),
     );

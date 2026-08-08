@@ -152,7 +152,14 @@ describe("counts", () => {
 describe("order", () => {
   it("interleaves the archives rather than ranking them", async () => {
     const payload = await inside();
-    expect(payload.hits.map((hit) => hit.source)).toEqual(["archive", "loc", "archive", "loc"]);
+    // Matches whose excerpt carries the searched words are placed ahead of the
+    // one whose excerpt is a page opening, so the alternation is read inside
+    // each of those groups rather than across the whole list.
+    const carrying = payload.hits.filter((hit) => hit.excerpt_kind === "passage");
+    const opening = payload.hits.filter((hit) => hit.excerpt_kind === "page_opening");
+
+    expect(carrying.map((hit) => hit.source)).toEqual(["archive", "archive", "loc"]);
+    expect(opening.map((hit) => hit.source)).toEqual(["loc"]);
     expect(payload.order).toMatch(/in turn/);
   });
 

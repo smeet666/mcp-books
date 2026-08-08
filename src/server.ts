@@ -71,9 +71,9 @@ export function buildInstructions(
       )}. A search of them asks where a phrase was printed in any of them, so the answer is additive: a match from one archive is no evidence about the others, and nothing is put side by side.`,
   ];
 
-  if (insideUnable.length > 0) {
+  for (const profile of insideUnable) {
     lines.push(
-      `${insideUnable.map((profile) => profile.name).join(" and ")} cannot be searched inside its text, so it is named as absent from that tool rather than quietly left out.`,
+      `${profile.name} cannot be searched inside its text, so it is named as absent from that tool rather than quietly left out. ${profile.cannot.search_inside ?? ""}`.trim(),
     );
   }
 
@@ -89,8 +89,49 @@ export function buildInstructions(
     "An archive that fails is named as an archive that failed, with the moment that failed: a search that did not answer, or a search that answered and a record that could not be read. An answer holding rows from some archives is never evidence about what the others hold.",
     "The archives share no scale. Their counts count different things and are never added, no score ranks their rows against each other, and there is no order by date across them: a year is the date of an edition in one place and the date on a catalogue record in another.",
     "media_type keeps one name across the archives and a vocabulary per archive. An archive that files nothing under the name given is named as absent from that call, with its own names listed, rather than asked under a translation.",
-    "Terms of reuse are stated per record and never summed for an answer. A record stating none has granted nothing.",
+    "Terms of reuse are stated per record and never summed for an answer. A record stating none has granted nothing, and an archive publishing its whole catalogue on one condition says so as a condition over the catalogue.",
   );
+
+  // The same words are not the same question everywhere, and a caller reading
+  // one merged list is the reader least able to see it.
+  const searchFields = profiles.filter((profile) => profile.answers.includes("search_items"));
+  if (new Set(searchFields.map((profile) => profile.searchesOn)).size > 1) {
+    lines.push(
+      `search_items matches the words given against different fields on each archive: ${searchFields
+        .map((profile) => `${profile.name} on ${profile.searchesOn}`)
+        .join(
+          "; ",
+        )}. The same query is therefore a different question in each, an archive reading titles alone answers a person's name with the books about that person, and per_source says which fields each one read.`,
+    );
+  }
+
+  const unfiltered = profiles.filter(
+    (profile) => profile.answers.includes("search_items") && profile.honours.length === 0,
+  );
+  for (const profile of unfiltered) {
+    lines.push(
+      `${profile.name} applies neither year_from and year_to nor sort, so those are never sent to it and per_source names it as an archive they did not reach. Its rows sit in the merged list unnarrowed by them.`,
+    );
+  }
+
+  // Where an archive rows describe different kinds of thing, a caller merging
+  // them has to be able to read which.
+  if (new Set(profiles.map((profile) => profile.rowDescribes)).size > 1) {
+    lines.push(
+      `A row means a different thing on each archive: ${profiles
+        .map((profile) => `on ${profile.name} it is ${profile.rowDescribes}`)
+        .join(
+          "; ",
+        )}. Rows carry the same fields throughout, and per_source says what each archive's row describes.`,
+    );
+  }
+
+  for (const profile of profiles) {
+    if (!profile.creditNote) continue;
+    lines.push(
+      `${profile.name} publishes on a condition: ${profile.creditNote}. Its credit line and its records carry what to say, and repeating both is what the condition asks for.`,
+    );
+  }
 
   if (slowest) {
     lines.push(

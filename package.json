@@ -1,7 +1,7 @@
 {
   "name": "mcp-books",
-  "version": "1.0.0",
-  "description": "MCP server that searches the Internet Archive and the Library of Congress at once, inside scanned text and across catalogues. No API key required.",
+  "version": "1.1.0",
+  "description": "MCP server that searches the Internet Archive, the Library of Congress and data.bnf.fr at once, inside scanned text and across catalogues. No API key required.",
   "keywords": [
     "mcp",
     "model-context-protocol",
@@ -11,6 +11,8 @@
     "full-text-search",
     "internet-archive",
     "library-of-congress",
+    "bnf",
+    "data-bnf",
     "newspapers",
     "ocr"
   ],
@@ -64,8 +66,9 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "mcp-archiveorg": "^1.3.0",
-    "mcp-libraryofcongress": "^1.1.0",
+    "mcp-archiveorg": "^1.4.0",
+    "mcp-databnf": "^1.0.0",
+    "mcp-libraryofcongress": "^2.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

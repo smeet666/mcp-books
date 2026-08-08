@@ -120,7 +120,7 @@ describe("search_items", () => {
     const payload = payloadOf<{ items: Array<{ source: string }>; item_count: number }>(
       await runSearchItems(fakeClient(), itemArgs()),
     );
-    expect(payload.item_count).toBe(4);
+    expect(payload.item_count).toBe(6);
   });
 
   it("carries the identifier the next call takes on every row", async () => {
@@ -128,7 +128,7 @@ describe("search_items", () => {
       await runSearchItems(fakeClient(), itemArgs()),
     );
     for (const row of payload.items) {
-      expect(row.id).toMatch(/^(archive|loc):/);
+      expect(row.id).toMatch(/^(archive|loc|bnf):/);
       expect(row.source_url.startsWith("https://")).toBe(true);
     }
   });

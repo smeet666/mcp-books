@@ -1,15 +1,14 @@
 /**
  * One request per route against the real archives.
  *
- * The unit suite runs against stand-in archives, so it cannot notice that the
- * Internet Archive renamed a field or that the Library of Congress changed the
- * shape of a newspaper row: the day either happens, the unit suite stays green
- * while the published server is broken for everyone. This suite is what
- * notices.
+ * The unit suite runs against stand-in archives, so it cannot notice that an
+ * archive renamed a field or changed the shape of a row: the day that happens,
+ * the unit suite stays green while the published server is broken for everyone.
+ * This suite is what notices.
  *
- * It is opt-in. Both archives serve everyone free of charge, one of them is a
- * non-profit and the other a public institution, and a test run on every push
- * has no business adding load to them.
+ * It is opt-in. Every archive here serves everyone free of charge, one is a
+ * non-profit and the others are public institutions, and a test run on every
+ * push has no business adding load to them.
  */
 
 import { describe, expect, it } from "vitest";
@@ -26,11 +25,22 @@ suite("the archives, as they are today", () => {
   it("answers a full-text search from every archive, and names any that did not", async () => {
     const merged = await client.searchInside('"call me ishmael"', insideOptions);
 
-    for (const report of merged.reports) {
+    for (const report of merged.reports.filter((entry) => entry.status !== "absent")) {
       expect(report.status, `${report.name}: ${report.error?.message ?? ""}`).toBe("answered");
     }
     expect(merged.hits.length).toBeGreaterThan(0);
-    expect(new Set(merged.hits.map((hit) => hit.source)).size).toBe(2);
+    expect(new Set(merged.hits.map((hit) => hit.source)).size).toBeGreaterThan(1);
+  });
+
+  it("names an archive holding no text of its own as absent, with the reason", async () => {
+    const merged = await client.searchInside('"call me ishmael"', insideOptions);
+    const absent = merged.reports.filter((report) => report.status === "absent");
+
+    expect(absent.length).toBeGreaterThan(0);
+    for (const report of absent) {
+      expect(report.stage, report.name).toBeNull();
+      expect(report.absentBecause ?? "", report.name).toMatch(/search inside/);
+    }
   });
 
   it("reports no leaf number from the index that holds none", async () => {
@@ -68,7 +78,7 @@ suite("the archives, as they are today", () => {
   it("counts different things in each archive and says which", async () => {
     const merged = await client.searchInside('"a wet fog"', insideOptions);
 
-    for (const report of merged.reports) {
+    for (const report of merged.reports.filter((entry) => entry.status === "answered")) {
       expect(report.reportedTotal, report.name).not.toBeNull();
       expect(report.reportedTotalMeans, report.name).toBeTruthy();
     }
@@ -84,7 +94,56 @@ suite("the archives, as they are today", () => {
     for (const report of merged.reports) {
       expect(report.status, `${report.name}: ${report.error?.message ?? ""}`).toBe("answered");
     }
-    expect(new Set(merged.rows.map((row) => row.source)).size).toBe(2);
+    expect(new Set(merged.rows.map((row) => row.source)).size).toBe(3);
+  });
+
+  it("finds through one archive's catalogue what the others do not hold", async () => {
+    // A catalogue of works reaches an early printed book the archives of scans
+    // answer nothing for, which is the whole reason to ask several catalogues.
+    const merged = await client.searchItems("dictionnaire français latin", {
+      sort: "relevance",
+      limit: 5,
+      page: 1,
+    });
+    const fromCatalogue = merged.rows.filter((row) => row.source === "bnf");
+
+    expect(fromCatalogue.length).toBeGreaterThan(0);
+    for (const row of fromCatalogue) expect(row.mediaType).toBe("work");
+  });
+
+  it("names the archives a year range never reached, and sends it to nobody else", async () => {
+    const merged = await client.searchItems("dictionnaire", {
+      yearFrom: 1500,
+      yearTo: 1600,
+      sort: "relevance",
+      limit: 2,
+      page: 1,
+    });
+
+    const dropped = merged.reports.filter((report) => report.filtersDropped.length > 0);
+    expect(dropped.length).toBeGreaterThan(0);
+    for (const report of dropped) {
+      expect(report.filtersDropped.map((entry) => entry.filter)).toContain("year_range");
+      expect(report.filtersDropped[0]?.because.length).toBeGreaterThan(20);
+    }
+  });
+
+  it("carries the credit an archive's own licence asks for", async () => {
+    const merged = await client.searchItems("dictionnaire", {
+      sort: "relevance",
+      limit: 2,
+      page: 1,
+    });
+    const conditional = merged.reports.filter(
+      (report) => client.profiles.find((profile) => profile.id === report.source)?.creditNote,
+    );
+
+    expect(conditional.length).toBeGreaterThan(0);
+    for (const report of conditional) {
+      // The date of retrieval is what the condition asks for beyond the name,
+      // and only the read that fetched the metadata knows it.
+      expect(report.attribution ?? "", report.name).toMatch(/\d{4}-\d{2}-\d{2}T/);
+    }
   });
 
   it("leaves out the archive that files nothing under the name given, and says so", async () => {
@@ -101,9 +160,13 @@ suite("the archives, as they are today", () => {
   });
 
   it("hands back identifiers that read back as records", async () => {
-    const merged = await client.searchItems("whaling", { sort: "relevance", limit: 2, page: 1 });
+    const merged = await client.searchItems("dictionnaire", {
+      sort: "relevance",
+      limit: 2,
+      page: 1,
+    });
 
-    for (const source of ["archive", "loc"] as const) {
+    for (const source of ["archive", "loc", "bnf"] as const) {
       const row = merged.rows.find((entry) => entry.source === source);
       expect(row, `no row from ${source}`).toBeDefined();
 

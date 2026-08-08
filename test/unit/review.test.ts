@@ -149,7 +149,7 @@ describe("the sentence counting excerpts that are page openings", () => {
     );
     const note = payload.notes.find((entry) => entry.includes("opening of a page"))!;
     expect(note).toMatch(/1 of the 4 excerpts here is the opening of a page/);
-    expect(note).toMatch(/across 1 match\./);
+    expect(note).toMatch(/across 1 match[,.]/);
   });
 
   it("reads as a plural when there are several", async () => {
@@ -165,6 +165,6 @@ describe("the sentence counting excerpts that are page openings", () => {
     );
     const note = payload.notes.find((entry) => entry.includes("opening of a page"))!;
     expect(note).toMatch(/2 of the 4 excerpts here are the opening of a page/);
-    expect(note).toMatch(/across 2 matches\./);
+    expect(note).toMatch(/across 2 matches[,.]/);
   });
 });

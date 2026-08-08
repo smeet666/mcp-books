@@ -84,7 +84,17 @@ export const getItemOutput = z.object({
     date: z.string().nullable().describe("The date exactly as published."),
     media_type: z.string().nullable(),
     source_url: z.string(),
-    attribution: z.string(),
+    attribution: z
+      .string()
+      .describe(
+        "What to say when repeating this record, as its archive states it. An archive whose licence asks for the date its metadata was retrieved carries that date here.",
+      ),
+    identifier_provisional: z
+      .boolean()
+      .nullable()
+      .describe(
+        "True where the archive itself calls this identifier provisional: it can be replaced once a cataloguer settles the record. Null on an archive that mints one kind of identifier and says nothing about settling it.",
+      ),
     description: z
       .string()
       .nullable()
@@ -208,6 +218,20 @@ export async function runGetItem(client: BooksClient, args: GetItemArgs): Promis
         `${omitted.join(", ")} ${omitted.length === 1 ? "was" : "were"} not asked for, so ${omitted.length === 1 ? "it is" : "they are"} empty here for that reason alone.`,
       );
     }
+    // Rows from every archive carry the same fields and describe different
+    // kinds of thing. A reader who has one record in front of them is the one
+    // most likely to take it for the other kind.
+    if (profile) {
+      notes.push(`A record on ${item.sourceName} describes ${profile.rowDescribes}.`);
+    }
+    if (item.identifierProvisional === true) {
+      notes.push(
+        `${item.sourceName} calls this identifier provisional: it is held while a cataloguer settles the record and can be replaced, so a citation carrying it can stop naming anything. Prefer a settled identifier where the record offers one.`,
+      );
+    }
+    if (profile?.creditNote) {
+      notes.push(`Credit this as "${item.attribution}": ${profile.creditNote}.`);
+    }
     notes.push(`A year on ${item.sourceName} is ${yearMeans}.`);
     if (cached) notes.push("Served from an in-memory cache rather than from the archive itself.");
 
@@ -224,12 +248,14 @@ export async function runGetItem(client: BooksClient, args: GetItemArgs): Promis
       media_type: item.mediaType,
       source_url: item.sourceUrl,
       attribution: item.attribution,
+      identifier_provisional: item.identifierProvisional,
       description: wanted.has("description") ? (window.text === "" ? null : window.text) : null,
       notes: wanted.has("description") ? item.notes : [],
       subjects: wanted.has("subjects") ? item.subjects : [],
       rights: {
         statement: item.rights.statement,
         url: item.rights.url,
+        covers: item.rights.covers,
         note: rightsNote(item.rights, item.sourceName),
       },
       copies,
@@ -359,17 +385,22 @@ export function pageProse(
  * not thereby granted anything, and terms vary per deposit.
  */
 export function rightsNote(
-  rights: { statement: string | null; url: string | null },
+  rights: { statement: string | null; url: string | null; covers?: string | null },
   sourceName: string,
 ): string {
+  // An archive setting terms per deposit states them on the record, and an
+  // archive publishing everything on one condition states that condition over
+  // the catalogue. Reporting the second as the record's own would say the next
+  // record had stated nothing.
+  const scope = `They cover ${rights.covers ?? "this record and no other"}.`;
   if (rights.statement && rights.url) {
-    return `This record states its own terms: ${rights.statement} (${rights.url}). They cover this record and no other.`;
+    return `This record states its own terms: ${rights.statement} (${rights.url}). ${scope}`;
   }
   if (rights.statement) {
-    return `This record states its own terms: ${rights.statement}. They cover this record and no other.`;
+    return `This record states its own terms: ${rights.statement} ${scope}`;
   }
   if (rights.url) {
-    return `This record points at ${rights.url} for its terms. They cover this record and no other.`;
+    return `This record points at ${rights.url} for its terms. ${scope}`;
   }
   return `This record states no terms of reuse. ${sourceName} sets terms per deposit, so silence here is silence: it is not a grant, and it says nothing about any other record.`;
 }

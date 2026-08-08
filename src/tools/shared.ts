@@ -4,6 +4,32 @@ import { z } from "zod";
 import { BooksError } from "../errors.js";
 import type { Hit, ItemRow, SourceReport } from "../types.js";
 
+/** One wording put to one archive, or one derived and left unsent. */
+export const querySchema = z.object({
+  query: z.string().describe("The words this archive was given, exactly as they were sent."),
+  derivation: z.string().describe("How this wording was arrived at from the question, in words."),
+  ran: z.boolean().describe("Whether it was sent. False means it was derived and withheld."),
+  count: z
+    .number()
+    .int()
+    .nullable()
+    .describe(
+      "Rows the archive returned for this wording. Zero is that wording finding nothing, which is a statement about the wording. Null when it was not sent, or did not answer.",
+    ),
+  added: z
+    .number()
+    .int()
+    .nullable()
+    .describe(
+      "Rows this wording contributed that an earlier one had not already returned. Null when it was not sent, or did not answer.",
+    ),
+  not_run_because: z.string().nullable().describe("Why it was withheld. Null when it was sent."),
+  error: z
+    .object({ code: z.string(), message: z.string(), hint: z.string().optional() })
+    .nullable()
+    .describe("Why this wording did not answer. Null when it did, or was never sent."),
+});
+
 /**
  * The text block is what many clients render, and some render nothing else, so
  * it has to answer on its own. This ceiling is what keeps ten matches carrying
@@ -127,7 +153,13 @@ export const rowSchema = z.object({
     .boolean()
     .nullable()
     .describe(
-      "Whether a digitised copy can be read online. Null on an archive that holds a copy of everything it catalogues and so states nothing.",
+      "Whether a digitised copy can be read online. Null on an archive that states nothing about a copy against a catalogue row.",
+    ),
+  identifier_provisional: z
+    .boolean()
+    .nullable()
+    .describe(
+      "True where the archive itself calls this identifier provisional: it can be replaced once a cataloguer settles the record, so a citation carrying it can stop naming anything. Null on an archive that mints one kind of identifier and says nothing about settling it, which is not the same as an archive stating this one is settled.",
     ),
 });
 
@@ -191,6 +223,39 @@ export const reportSchema = z.object({
     .describe(
       "The name this archive was asked to look under, in its own vocabulary. Null where it searches every kind at once.",
     ),
+  attribution: z
+    .string()
+    .nullable()
+    .describe(
+      "What to say when repeating what this archive contributed, as this archive states it for this answer. An archive whose licence asks for the date its metadata was retrieved carries that date here. Null on an archive that was never asked.",
+    ),
+  searches_on: z
+    .string()
+    .nullable()
+    .describe(
+      "The fields this archive matched the query against. The archives read different ones, so the same words are not the same question everywhere, and a name given to an index over titles alone comes back as the works written about that person.",
+    ),
+  row_describes: z
+    .string()
+    .nullable()
+    .describe(
+      "What one row from this archive is: a copy it holds, a record in a catalogue, or a work as an entity whose editions are records of their own. Rows carry the same fields and describe different kinds of thing.",
+    ),
+  filters_dropped: z
+    .array(
+      z.object({
+        filter: z.string().describe("The narrowing, named as the argument that carries it."),
+        because: z.string().describe("Why this archive never received it."),
+      }),
+    )
+    .describe(
+      "Narrowings you asked for that this archive never received, because its catalogue cannot apply them. Its rows were not narrowed by them, and a row from it that happens to satisfy one is a coincidence rather than a filter. Empty when it received every narrowing asked for.",
+    ),
+  queries: z
+    .array(querySchema)
+    .describe(
+      "Every wording derived for this archive, in the order they were tried, with what each one returned and why any was withheld. Retyping one of them reproduces its rows by hand. Empty on a call that carries no query.",
+    ),
   year_means: z
     .string()
     .nullable()
@@ -219,9 +284,15 @@ export const rightsSchema = z.object({
     .nullable()
     .describe("What this record says about reuse, in the archive's own words."),
   url: z.string().nullable().describe("The licence this record points at, when it points at one."),
+  covers: z
+    .string()
+    .nullable()
+    .describe(
+      "What the statement covers, where it covers more than this record. Null on an archive setting terms per deposit, where a statement covers the record it sits on and no other.",
+    ),
   note: z
     .string()
-    .describe("How to read the two fields above for this record, including when both are null."),
+    .describe("How to read the fields above for this record, including when they are null."),
 });
 
 export function toHitPayload(hit: Hit): z.infer<typeof hitSchema> {
@@ -259,6 +330,7 @@ export function toRowPayload(row: ItemRow): z.infer<typeof rowSchema> {
     downloads: row.downloads,
     location: row.location,
     online: row.online,
+    identifier_provisional: row.identifierProvisional,
   };
 }
 
@@ -267,6 +339,8 @@ export interface ReportContext {
   yearMeans?: string;
   publishesPageNumber?: boolean;
   corpus?: string | null;
+  searchesOn?: string;
+  rowDescribes?: string;
 }
 
 export function toReportPayload(
@@ -286,6 +360,22 @@ export function toReportPayload(
     more_on_this_archive: report.moreOnThisArchive,
     ordered_on: report.orderedOn,
     media_type_asked: report.mediaTypeAsked,
+    attribution: report.attribution,
+    searches_on: context.searchesOn ?? null,
+    row_describes: context.rowDescribes ?? null,
+    filters_dropped: report.filtersDropped.map((entry) => ({
+      filter: entry.filter,
+      because: entry.because,
+    })),
+    queries: report.queries.map((entry) => ({
+      query: entry.query,
+      derivation: entry.derivation,
+      ran: entry.ran,
+      count: entry.count,
+      added: entry.added,
+      not_run_because: entry.notRunBecause,
+      error: entry.error,
+    })),
     year_means: context.yearMeans ?? null,
     publishes_page_number: context.publishesPageNumber ?? null,
     corpus: context.corpus ?? null,
@@ -330,10 +420,15 @@ export function reportNotes(reports: SourceReport[]): string[] {
 
   for (const report of answered) {
     if (report.count === 0 && (report.skipped ?? 0) === 0) {
+      // Where wordings were derived and sent, the shorter wording and the other
+      // spelling have already been tried, and offering them as the next move
+      // would send a caller after a search this answer already holds.
       notes.push(
-        `${report.name} answered and offered nothing under this wording. That is a statement about ` +
-          "the wording as much as about the corpus: try fewer words, or the spelling a scanner would " +
-          "have produced.",
+        report.queries.filter((entry) => entry.ran).length > 1
+          ? `${report.name} answered and offered nothing under this wording, nor under any wording derived from it. That is a statement about those wordings as much as about the corpus.`
+          : `${report.name} answered and offered nothing under this wording. That is a statement about ` +
+              "the wording as much as about the corpus: try fewer words, or the spelling a scanner would " +
+              "have produced.",
       );
     }
     if (report.count === 0 && (report.skipped ?? 0) > 0) {
@@ -367,6 +462,56 @@ export function reportNotes(reports: SourceReport[]): string[] {
   if (reports.some((report) => report.cached)) {
     notes.push(
       "Part of this answer came from an in-memory cache rather than from the archive itself.",
+    );
+  }
+
+  return notes;
+}
+
+/**
+ * What was actually sent, said in the answer rather than left in the payload.
+ *
+ * An answer built out of more than the words a caller wrote has to say so, and
+ * has to say it in the block a client renders: a reader who cannot see which
+ * wordings were sent cannot tell a corpus holding nothing from a wording
+ * finding nothing, which is the confusion the whole derivation exists to lift.
+ * Every wording here is one a reader can retype.
+ */
+export function queryNotes(reports: SourceReport[]): string[] {
+  const notes: string[] = [];
+  let unioned = false;
+
+  for (const report of reports) {
+    const sent = report.queries.filter((entry) => entry.ran);
+    if (sent.length === 0) continue;
+
+    const contributed = sent.slice(1).some((entry) => (entry.added ?? 0) > 0);
+    const refused = sent.some((entry) => entry.error !== null);
+    const emptyAsAsked = sent[0]!.count === 0;
+    // An answer whose every row came from the words the caller wrote is the
+    // answer to the question as put, and the wordings tried beside it changed
+    // nothing a reader has to know to read it. They stay in 'queries', where a
+    // caller checking how the answer was built will find them, rather than in
+    // the block, where they would push out a sentence that does qualify it.
+    if (!contributed && !refused && !emptyAsAsked) continue;
+    if (contributed) unioned = true;
+
+    // The words as asked open the line of every archive and open the block
+    // above it, so they are named rather than quoted a third time. The derived
+    // wordings are quoted, because they are the ones a reader has not seen and
+    // would otherwise have no way to retype.
+    const said = sent.map((entry, index) => {
+      const words = index === 0 ? "as asked" : `"${entry.query}"`;
+      return entry.error ? `${words}, did not answer` : `${words}, ${entry.count}`;
+    });
+    notes.push(
+      `${report.name} was asked ${sent.length} quer${sent.length === 1 ? "y" : "ies"} and returned: ${said.join("; ")}.`,
+    );
+  }
+
+  if (unioned) {
+    notes.push(
+      "A list built from more than one wording holds their union, deduplicated on the identifier this server hands out, in the order the wordings were sent. That is this server's own order over what it received, and no archive's judgement of relevance. 'queries' in per_source holds every wording, sent or withheld.",
     );
   }
 
@@ -450,22 +595,25 @@ export function quoteForeign(value: string): string {
  * Notes that have to survive when the block is too long for all of them.
  *
  * A note saying an archive failed or was never asked, a note carrying the terms
- * a record is published under, and a note saying an excerpt is the opening of a
- * page rather than the match are the ones a reader most needs and the ones an
- * over-long answer is most likely to have. Dropping from the end alone would
- * drop exactly these.
+ * a record is published under, a note saying an excerpt is the opening of a
+ * page rather than the match, and a note saying what a date order was built on
+ * are the ones a reader most needs and the ones an over-long answer is most
+ * likely to have. Dropping from the end alone would drop exactly these.
  */
 const LOAD_BEARING =
-  /did not answer|was not asked|could not be read|opening of (?:a|the) page|page_opening|no leaf number|optical recognition|silence (?:is not|here is silence)|terms of reuse|licen[cs]e|https?:\/\/|never added together|offered nothing|read different material|Ask for page|Ask again with|reported \d/i;
+  /did not answer|was not asked|was not given|could not be read|opening of (?:a|the) page|page_opening|no leaf number|optical recognition|silence (?:is not|here is silence)|terms of reuse|licen[cs]e|https?:\/\/|never added together|offered nothing|none holds anything|read different material|different fields|provisional|Ask for page|Ask again with|reported \d|was asked \d+ quer|holds the union|no era|carr(?:y|ies) no year|ordered its own rows/i;
 
 /**
  * How much of the block the notes may take.
  *
  * Enough for the sentences that qualify an answer, while leaving the answer
- * they qualify room to be one. Whatever is dropped is still in the structured
- * output, where a caller reading that instead loses nothing.
+ * they qualify room to be one. What qualifies an answer grows with the number
+ * of archives in it, since each one states its own count, its own order and its
+ * own reason for being absent, so the share is set against a merged answer
+ * rather than against a single archive's. Whatever is dropped is still in the
+ * structured output, where a caller reading that instead loses nothing.
  */
-const NOTE_BUDGET = Math.round(MAX_TEXT_CHARS * 0.4);
+const NOTE_BUDGET = Math.round(MAX_TEXT_CHARS * 0.55);
 
 /** Room for one note, so no single note can crowd out all the others. */
 const MAX_NOTE_CHARS = 420;

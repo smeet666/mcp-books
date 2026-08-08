@@ -126,6 +126,27 @@ describe("the guidance a model reads before choosing", () => {
 });
 
 describe("the guidance when an archive answers only some of the tools", () => {
+  const readsText = {
+    id: "here",
+    name: "an archive that reads text",
+    homeUrl: "https://example.invalid",
+    attribution: "Source: an archive that reads text",
+    creditNote: null,
+    searchesOn: "titles, creators and subjects together",
+    rowDescribes: "a volume this archive holds",
+    insideCorpus: "the text of its own scans",
+    yearMeans: "the year printed on the volume",
+    publishesPageNumber: true,
+    mediaTypes: ["books"],
+    defaultMediaType: "books",
+    answers: ["search_inside", "search_items", "get_item"] as const,
+    cannot: {},
+    honours: ["year_range", "sort"] as const,
+    cannotFilter: {},
+    paceMs: 1000,
+    paceReason: "politeness",
+  };
+
   const withStandIn = () =>
     buildInstructions(
       [
@@ -134,6 +155,9 @@ describe("the guidance when an archive answers only some of the tools", () => {
           name: "an archive that reads text",
           homeUrl: "https://example.invalid",
           attribution: "Source: an archive that reads text",
+          creditNote: null,
+          searchesOn: "titles, creators and subjects together",
+          rowDescribes: "a volume this archive holds",
           insideCorpus: "the text of its own scans",
           yearMeans: "the year printed on the volume",
           publishesPageNumber: true,
@@ -141,6 +165,8 @@ describe("the guidance when an archive answers only some of the tools", () => {
           defaultMediaType: "books",
           answers: ["search_inside", "search_items", "get_item"],
           cannot: {},
+          honours: ["year_range", "sort"],
+          cannotFilter: {},
           paceMs: 1000,
           paceReason: "politeness",
         },
@@ -157,8 +183,16 @@ describe("the guidance when an archive answers only some of the tools", () => {
     expect(withStandIn()).toMatch(/named as absent from that tool rather than quietly left out/);
   });
 
+  it("carries that archive's own reason, so a caller can act on it", () => {
+    expect(withStandIn()).toMatch(/robots file/);
+  });
+
   it("says nothing of the kind when every archive answers every tool", () => {
-    expect(INSTRUCTIONS).not.toMatch(/cannot be searched inside its text/);
+    const everyTool = buildInstructions(
+      [{ ...readsText, answers: [...readsText.answers], honours: [...readsText.honours] }],
+      [{ name: readsText.name, intervalMs: 1000, because: "politeness" }],
+    );
+    expect(everyTool).not.toMatch(/cannot be searched inside its text/);
   });
 });
 

@@ -16,6 +16,7 @@ import type {
   InsideQuery,
   ReadDetail,
   ReadRows,
+  SortKey,
   SourceAdapter,
 } from "./adapter.js";
 import {
@@ -127,6 +128,10 @@ export const LOC_PROFILE: SourceProfile = {
   name: "the Library of Congress",
   homeUrl: "https://www.loc.gov",
   attribution: "Source: the Library of Congress",
+  creditNote: null,
+  searchesOn: "titles, creators and subjects together, across the catalogue it was pointed at",
+  rowDescribes:
+    "a record in the Library's catalogue, which can name something held on a shelf as readily as something digitised",
   insideCorpus:
     "the text optical recognition read off the pages of American newspapers the Library has digitised",
   yearMeans: "the year the Library reads off the date its catalogue record carries",
@@ -146,6 +151,8 @@ export const LOC_PROFILE: SourceProfile = {
   defaultMediaType: "books",
   answers: ["search_inside", "search_items", "get_item"],
   cannot: {},
+  honours: ["year_range", "sort"],
+  cannotFilter: {},
   paceMs: 6000,
   paceReason:
     "the Library publishes a ceiling of ten requests a minute across its site, and the lowest published limit governs, so six seconds separate two of its requests",
@@ -293,7 +300,7 @@ export function locAdapter(reader: LocReader): SourceAdapter {
         format: query.mediaType ?? LOC_PROFILE.defaultMediaType!,
         ...(query.yearFrom === undefined ? {} : { yearFrom: query.yearFrom }),
         ...(query.yearTo === undefined ? {} : { yearTo: query.yearTo }),
-        sort: query.sort,
+        ...(query.sort === null ? {} : { sort: query.sort }),
         // The catalogue answers with digitised material alone unless it is
         // widened. Narrowing it here would drop what the Library holds on a
         // shelf and answer as though it held nothing, so every row comes back
@@ -333,6 +340,9 @@ export function locAdapter(reader: LocReader): SourceAdapter {
           downloads: null,
           location: textList(raw?.location),
           online: typeof raw?.online === "boolean" ? raw.online : null,
+          // The Library mints one kind of identifier and says nothing about
+          // settling it, so there is no claim to make either way.
+          identifierProvisional: null,
         });
       }
 
@@ -364,7 +374,7 @@ function decodeOrRaw(value: string): string {
 }
 
 /** How the Library was asked to order its own rows, in words. */
-function orderWords(sort: CatalogueQuery["sort"]): string {
+function orderWords(sort: SortKey | null): string {
   switch (sort) {
     case "newest":
       return "the date on the Library's catalogue record, newest first";
@@ -410,12 +420,14 @@ export function locDetail(payload: unknown): ItemDetail {
     mediaType: text(record.format),
     sourceUrl: required(record.sourceUrl, "sourceUrl", LOC_PROFILE),
     attribution: LOC_PROFILE.attribution,
+    identifierProvisional: null,
     description: text(record.description),
     notes: textList(record.notes),
     subjects: textList(record.subjects),
     // The Library states terms as a sentence on the record. Most records carry
-    // none, and a record carrying none has granted nothing.
-    rights: { statement: text(record.rights), url: null },
+    // none, and a record carrying none has granted nothing. Terms are set per
+    // deposit, so what a record states covers that record.
+    rights: { statement: text(record.rights), url: null, covers: null },
     copies,
     copiesAvailable: copies.length,
     // The Library lists served copies and nothing beside them.

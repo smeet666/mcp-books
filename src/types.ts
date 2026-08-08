@@ -16,6 +16,25 @@ export type Capability = "search_inside" | "search_items" | "get_item";
 export const CAPABILITIES: readonly Capability[] = ["search_inside", "search_items", "get_item"];
 
 /**
+ * The narrowings a catalogue search can carry, named as a caller names them.
+ *
+ * Not every catalogue offers them. One that does not is never sent the
+ * narrowing, and the answer names it as an archive the narrowing never reached:
+ * honouring a filter on some archives and dropping it in silence on another
+ * produces a merged list that claims a criterion one of its halves never
+ * received.
+ */
+export type CatalogueFilter = "year_range" | "sort";
+
+export const CATALOGUE_FILTERS: readonly CatalogueFilter[] = ["year_range", "sort"];
+
+/** One narrowing an archive never received, and the reason a caller has to hear. */
+export interface DroppedFilter {
+  filter: CatalogueFilter;
+  because: string;
+}
+
+/**
  * What an excerpt is.
  *
  * The two are different objects and are never merged under one name. A
@@ -35,6 +54,32 @@ export interface SourceProfile {
   homeUrl: string;
   /** What a caller has to say when repeating text from this archive. */
   attribution: string;
+  /**
+   * What the archive asks for beyond being named, in words. Null where it asks
+   * for nothing more. An archive publishing on a condition states that
+   * condition here, so an answer can carry it rather than leaving a caller to
+   * discover it on the archive's own site.
+   */
+  creditNote: string | null;
+  /**
+   * Which fields a catalogue search matches the query against, in words.
+   *
+   * The same words put to two archives are two questions when one reads titles,
+   * creators and subjects and another reads titles alone: a creator's name
+   * reaches the second as a subject, and comes back as the books written about
+   * that person. The answer publishes this rather than unifying it, because
+   * unifying it would need a search neither archive offers.
+   */
+  searchesOn: string;
+  /**
+   * What one row of this archive's catalogue is, in words.
+   *
+   * An archive of scans files a copy it holds; a national catalogue files a
+   * work as an entity, whose editions and whose author are records of their
+   * own. A row from each carries the same five fields and describes a different
+   * kind of thing, and a reader merging them has to be told which.
+   */
+  rowDescribes: string;
   /**
    * What the corpus behind `search_inside` holds, in words. Two archives
    * answering that tool answer it about different material, and an answer
@@ -60,6 +105,10 @@ export interface SourceProfile {
   answers: readonly Capability[];
   /** Why a call outside `answers` cannot be made, in words, keyed by call. */
   cannot: Partial<Record<Capability, string>>;
+  /** The narrowings this archive's catalogue applies. */
+  honours: readonly CatalogueFilter[];
+  /** Why a narrowing outside `honours` never reaches it, in words, keyed by narrowing. */
+  cannotFilter: Partial<Record<CatalogueFilter, string>>;
   /** Milliseconds this archive is left between two requests. */
   paceMs: number;
   /** Why the pacing is what it is, in words. */
@@ -122,6 +171,16 @@ export interface ItemRow {
   location: string[] | null;
   /** Whether a digitised copy can be read online, where the archive says. */
   online: boolean | null;
+  /**
+   * Whether the archive is still to settle this record's identifier.
+   *
+   * True is an identifier the archive itself calls provisional, which it can
+   * replace once a cataloguer finishes with the record, so a citation carrying
+   * it can stop naming anything. Null on an archive that mints one kind of
+   * identifier and says nothing about settling it, which is a different thing
+   * from an archive stating that this one is settled.
+   */
+  identifierProvisional: boolean | null;
 }
 
 /** Terms a record states, and where they were read. */
@@ -129,6 +188,13 @@ export interface Rights {
   /** The wording the archive published, or the address of a licence. */
   statement: string | null;
   url: string | null;
+  /**
+   * What the statement covers, in words. Null where it covers this record
+   * alone, which is the case on an archive setting terms per deposit. An
+   * archive publishing its whole catalogue on one condition says so here, so
+   * the answer never narrows a catalogue-wide condition onto one record.
+   */
+  covers: string | null;
 }
 
 /** One record, read in full. */
@@ -143,7 +209,14 @@ export interface ItemDetail {
   date: string | null;
   mediaType: string | null;
   sourceUrl: string;
+  /**
+   * What a caller has to say when repeating this record, as this archive
+   * states it. An archive asking for the date its metadata was retrieved
+   * carries that date here, since only the read that fetched it knows the date.
+   */
   attribution: string;
+  /** Whether the archive is still to settle this record's identifier. */
+  identifierProvisional: boolean | null;
   /** Prose the archive publishes about the record. */
   description: string | null;
   /** Further prose the archive files apart from the description. */
@@ -173,6 +246,33 @@ export interface ItemDetail {
    * record that left it blank.
    */
   unreadFields: string[];
+}
+
+/**
+ * One wording put to one archive, or one derived and left unsent.
+ *
+ * The list of these is what makes an answer reproducible: a reader with it can
+ * retype any of the wordings and see the same rows come back. A wording that
+ * returned nothing is kept for the same reason, since it says something about
+ * that wording rather than about the corpus.
+ */
+export interface QueryAttempt {
+  query: string;
+  /** How this wording was derived from the question, in words. */
+  derivation: string;
+  /** Whether it was actually sent to the archive. */
+  ran: boolean;
+  /** Rows the archive returned for it. Null when it was not sent, or failed. */
+  count: number | null;
+  /**
+   * Rows it contributed that no earlier wording in this answer had already
+   * returned. Null when it was not sent, or failed.
+   */
+  added: number | null;
+  /** Why it was not sent. Null when it was. */
+  notRunBecause: string | null;
+  /** Why this wording did not answer. Null when it did, or was never sent. */
+  error: { code: string; message: string; hint?: string } | null;
 }
 
 /**
@@ -215,6 +315,23 @@ export interface SourceReport {
   orderedOn: string | null;
   /** The name this archive was asked with, in its own vocabulary. */
   mediaTypeAsked: string | null;
+  /**
+   * What a caller has to say when repeating what this archive contributed, as
+   * this archive states it for this answer. Null on an archive that was never
+   * asked, and on one whose credit is its name alone.
+   */
+  attribution: string | null;
+  /**
+   * Narrowings the caller asked for that this archive never received, each
+   * with the reason. Empty when it received every one of them, and empty on a
+   * call that carries no narrowing at all.
+   */
+  filtersDropped: DroppedFilter[];
+  /**
+   * Every wording derived for this archive, in the order they were tried, with
+   * what each one returned. Empty on a call that carries no query.
+   */
+  queries: QueryAttempt[];
   /**
    * Whether this archive says it holds matches beyond the page just read. Null
    * where it states no total, and on an archive that was never asked.

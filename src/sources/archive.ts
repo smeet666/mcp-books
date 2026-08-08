@@ -14,6 +14,7 @@ import type {
   InsideQuery,
   ReadDetail,
   ReadRows,
+  SortKey,
   SourceAdapter,
 } from "./adapter.js";
 import {
@@ -99,6 +100,10 @@ export const ARCHIVE_PROFILE: SourceProfile = {
   name: "the Internet Archive",
   homeUrl: "https://archive.org",
   attribution: "Source: the Internet Archive",
+  creditNote: null,
+  searchesOn: "titles, creators and subjects together, in one index over the whole record",
+  rowDescribes:
+    "a copy of something the Archive holds and serves from its own site, digitised from a particular edition",
   insideCorpus:
     "the text optical recognition read off digitised books, periodicals and documents uploaded to the Archive",
   yearMeans:
@@ -111,6 +116,8 @@ export const ARCHIVE_PROFILE: SourceProfile = {
   defaultMediaType: null,
   answers: ["search_inside", "search_items", "get_item"],
   cannot: {},
+  honours: ["year_range", "sort"],
+  cannotFilter: {},
   paceMs: 1000,
   paceReason:
     "the Archive publishes no ceiling for a client like this one, so a second between requests is politeness rather than a limit",
@@ -281,7 +288,7 @@ export function archiveAdapter(reader: ArchiveReader): SourceAdapter {
         ...(query.mediaType ? { mediaType: query.mediaType } : {}),
         ...(query.yearFrom === undefined ? {} : { yearFrom: query.yearFrom }),
         ...(query.yearTo === undefined ? {} : { yearTo: query.yearTo }),
-        sort: query.sort,
+        ...(query.sort === null ? {} : { sort: query.sort }),
         limit: query.limit,
         page: query.page,
       });
@@ -315,6 +322,9 @@ export function archiveAdapter(reader: ArchiveReader): SourceAdapter {
           // The Archive holds a copy of everything it catalogues, so there is
           // no record here that names something held on a shelf alone.
           online: null,
+          // The Archive mints one kind of identifier and says nothing about
+          // settling it, so there is no claim to make either way.
+          identifierProvisional: null,
         });
       }
 
@@ -337,7 +347,7 @@ export function archiveAdapter(reader: ArchiveReader): SourceAdapter {
 }
 
 /** How the Archive was asked to order its own rows, in words. */
-function orderWords(sort: CatalogueQuery["sort"]): string {
+function orderWords(sort: SortKey | null): string {
   switch (sort) {
     case "newest":
       return "the Archive's own date field, newest first";
@@ -379,12 +389,14 @@ export function archiveDetail(payload: unknown): ItemDetail {
     mediaType: text(record.mediaType),
     sourceUrl: required(record.sourceUrl, "sourceUrl", ARCHIVE_PROFILE),
     attribution: ARCHIVE_PROFILE.attribution,
+    identifierProvisional: null,
     description: text(record.description),
     notes: [],
     subjects: subjectsOf(record.raw),
     // The Archive states terms as the address of a licence and writes no
     // wording of its own, and a record carrying neither has granted nothing.
-    rights: { statement: null, url: text(record.licenseUrl) },
+    // Terms are set per deposit, so what a record states covers that record.
+    rights: { statement: null, url: text(record.licenseUrl), covers: null },
     copies,
     // Copies this server could list, which is what a caller can open. The
     // Archive's own file count includes its bookkeeping entries and, on a

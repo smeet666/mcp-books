@@ -30,6 +30,17 @@ export interface ReadRows<T> {
   reportedTotalMeans: string | null;
   /** The order the archive put its own rows in, in words. */
   orderedOn: string | null;
+  /**
+   * Whether the archive answered with at least one row past the page just
+   * read. Left unset by an archive that publishes a total instead, where the
+   * total and the page decide it.
+   */
+  hasMore?: boolean | null;
+  /**
+   * What a caller has to say when repeating these rows, where the archive asks
+   * for more than its name. Left unset where its name is the whole of it.
+   */
+  attribution?: string | null;
   cached: boolean;
 }
 
@@ -52,9 +63,15 @@ export interface CatalogueQuery {
   query: string;
   /** Already translated into this archive's own name for a kind of material. */
   mediaType: string | null;
+  /**
+   * Absent on an archive whose catalogue applies no year range. It is left out
+   * rather than sent and ignored, so nothing downstream can report a narrowing
+   * as applied by an archive that never received it.
+   */
   yearFrom?: number;
   yearTo?: number;
-  sort: SortKey;
+  /** Null on an archive that puts its rows in an order of its own whatever is asked. */
+  sort: SortKey | null;
   limit: number;
   page: number;
 }
