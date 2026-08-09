@@ -13,13 +13,13 @@ import { MEDIA_TYPES } from "../../src/sources/registry.js";
 import { chooseMediaTypes } from "../../src/sources/client.js";
 import { searchItemsInput } from "../../src/tools/searchItems.js";
 import { runSearchItems } from "../../src/tools/searchItems.js";
-import { fakeClient, itemArgs, payloadOf, reportFor, textOf } from "./support.js";
+import { fakeClient, itemArgs, locItemRows, payloadOf, reportFor, textOf } from "./support.js";
 import { archiveAdapter } from "../../src/sources/archive.js";
 import { locAdapter } from "../../src/sources/loc.js";
 import { fakeArchive, fakeLoc } from "./support.js";
 
 interface Payload {
-  items: Array<{ source: string }>;
+  items: Array<{ source: string; source_url: string }>;
   per_source: Array<{ source: string; status: string; media_type_asked: string | null }>;
   media_types: Array<{ source: string; asked_with: string | null; vocabulary: string[] }>;
   notes: string[];
@@ -123,6 +123,64 @@ describe("a search naming no kind of material", () => {
       await runSearchItems(fakeClient(), itemArgs({ media_type: "maps" })),
     );
     expect(payload.notes.join(" ")).not.toMatch(/asked for "books" and nothing else/);
+  });
+});
+
+describe("the word a row carries for the kind of thing", () => {
+  /** A row whose record names its kind in words the argument never takes. */
+  const rows = [
+    {
+      ...locItemRows[0]!,
+      identifier: "gd00000001",
+      format: "photo, print, drawing",
+      sourceUrl: "https://www.loc.gov/item/gd00000001/",
+    },
+  ];
+
+  it("is named as the record's own, apart from the names the argument takes", async () => {
+    const payload = payloadOf<Payload>(
+      await runSearchItems(fakeClient({ loc: { rows } }), itemArgs()),
+    );
+
+    expect(payload.notes.join(" ")).toContain("photo, print, drawing");
+    expect(payload.notes.join(" ")).toMatch(/not (one of )?the names media_type takes/);
+  });
+
+  it("says nothing where every row carries a name the argument takes", async () => {
+    const inVocabulary = locItemRows.map((row) => ({ ...row, format: "books" }));
+    const payload = payloadOf<Payload>(
+      await runSearchItems(fakeClient({ loc: { rows: inVocabulary } }), itemArgs()),
+    );
+    expect(payload.notes.join(" ")).not.toMatch(/not (one of )?the names media_type takes/);
+  });
+});
+
+describe("the address on a catalogue row", () => {
+  /** The address a catalogue search hands back, with its own search on it. */
+  const rows = [
+    {
+      ...locItemRows[0]!,
+      identifier: "gd00000001",
+      sourceUrl: "https://www.loc.gov/resource/gd00000001/?sp=450&q=cormorant",
+    },
+  ];
+
+  it("carries none of the words that were searched for", async () => {
+    const payload = payloadOf<Payload>(
+      await runSearchItems(fakeClient({ loc: { rows } }), itemArgs()),
+    );
+    const row = payload.items.find((entry) => entry.source === "loc")!;
+
+    // A row here is a catalogue record. An address selecting a leaf for the
+    // words that were typed presents it as a place those words were found,
+    // which no catalogue search established.
+    expect(row.source_url).toBe("https://www.loc.gov/resource/gd00000001/");
+  });
+
+  it("leaves an address that carries no search alone", async () => {
+    const payload = payloadOf<Payload>(await runSearchItems(fakeClient(), itemArgs()));
+    const row = payload.items.find((entry) => entry.source === "loc")!;
+    expect(row.source_url).toBe(locItemRows[0]!.sourceUrl);
   });
 });
 

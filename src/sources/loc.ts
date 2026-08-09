@@ -130,11 +130,21 @@ export const LOC_PROFILE: SourceProfile = {
   attribution: "Source: the Library of Congress",
   creditNote: null,
   searchesOn: "titles, creators and subjects together, across the catalogue it was pointed at",
+  searchesOnCaveat: null,
+  // Its catalogue scores a record against the words given and answers with the
+  // records it ranks highest, so a long query comes back with records carrying
+  // some of the words and not the rest.
+  catalogueRequiresEveryWord: false,
+  // Its full-text route narrows instead: a word absent from every page empties
+  // the answer.
+  insideRequiresEveryWord: true,
   rowDescribes:
     "a record in the Library's catalogue, which can name something held on a shelf as readily as something digitised",
   insideCorpus:
     "the text optical recognition read off the pages of American newspapers the Library has digitised",
   yearMeans: "the year the Library reads off the date its catalogue record carries",
+  descriptionMeans:
+    "the description field of the catalogue record, whose contents follow the kind of material: an account of the thing on a photograph, and on a newspaper the place it was published rather than anything about the paper",
   publishesPageNumber: true,
   mediaTypes: [
     "books",
@@ -335,7 +345,7 @@ export function locAdapter(reader: LocReader): SourceAdapter {
           // Substituting the route a search went down would report the
           // question as though it were the record's own answer.
           mediaType: text(raw?.format),
-          sourceUrl,
+          sourceUrl: recordAddress(sourceUrl),
           // The Library counts no downloads.
           downloads: null,
           location: textList(raw?.location),
@@ -362,6 +372,21 @@ export function locAdapter(reader: LocReader): SourceAdapter {
       return { item: locDetail(outcome.data), cached: outcome.cached };
     },
   };
+}
+
+/**
+ * The address of a catalogue record, without the search that reached it.
+ *
+ * The Library's catalogue hands back an address carrying the words it was given
+ * and a leaf chosen for them. A row here is a record, and an address selecting
+ * a leaf for the caller's own words presents it as a place those words were
+ * printed, which reading a catalogue establishes about nothing. Dropping them
+ * leaves the address the Library publishes for the thing itself, unchanged in
+ * what it names.
+ */
+function recordAddress(url: string): string {
+  const at = url.indexOf("?");
+  return at === -1 ? url : url.slice(0, at);
 }
 
 /** A percent sign opening no escape is left as it was written. */

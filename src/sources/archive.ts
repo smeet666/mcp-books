@@ -102,12 +102,19 @@ export const ARCHIVE_PROFILE: SourceProfile = {
   attribution: "Source: the Internet Archive",
   creditNote: null,
   searchesOn: "titles, creators and subjects together, in one index over the whole record",
+  searchesOnCaveat: null,
+  // Its catalogue answers where every word appears in the record: a word no
+  // record carries empties the answer rather than being scored down.
+  catalogueRequiresEveryWord: true,
+  insideRequiresEveryWord: true,
   rowDescribes:
     "a copy of something the Archive holds and serves from its own site, digitised from a particular edition",
   insideCorpus:
     "the text optical recognition read off digitised books, periodicals and documents uploaded to the Archive",
   yearMeans:
     "the year the Archive derives from the record's own metadata, which on a scan is the edition's date and can sit centuries from when the work was written",
+  descriptionMeans:
+    "the description field of the deposit, which a depositor fills as they see fit: on a scan catalogued from a library record it holds the extent of the volume or a note on the edition rather than an account of the work",
   // The full-text index holds the position of the match within the item rather
   // than a leaf, so there is no page to report.
   publishesPageNumber: false,

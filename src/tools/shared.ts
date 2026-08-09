@@ -35,7 +35,7 @@ export const querySchema = z.object({
  * it has to answer on its own. This ceiling is what keeps ten matches carrying
  * three passages each from arriving as a wall of scanned text.
  */
-export const MAX_TEXT_CHARS = 3600;
+export const MAX_BODY_CHARS = 3600;
 
 /**
  * What every excerpt is worth, said once wherever excerpts appear.
@@ -54,6 +54,27 @@ export interface ToolResult {
   structuredContent?: Record<string, unknown>;
   isError?: boolean;
 }
+
+/**
+ * The wording a row came back under, on the row itself.
+ *
+ * A question reaches an archive in more than one wording, and a row found under
+ * a reduction answers the words that reduction kept rather than the question as
+ * written. A reader holding one row can act on that only if the row carries it,
+ * so it travels here as well as in the trace of everything that was sent.
+ */
+const foundByFields = {
+  found_by_query: z
+    .string()
+    .nullable()
+    .describe(
+      "The wording this archive was given that returned this row. It is the query as you wrote it unless a further wording was derived, in which case the row answers that wording's words and not the rest of the question.",
+    ),
+  found_by_derivation: z
+    .string()
+    .nullable()
+    .describe("How that wording was arrived at from the question, in words."),
+};
 
 /**
  * One match inside machine-read text.
@@ -112,6 +133,7 @@ export const hitSchema = z.object({
     .string()
     .nullable()
     .describe("The newspaper the page belongs to, where there is one."),
+  ...foundByFields,
 });
 
 /** One catalogue row. */
@@ -161,6 +183,7 @@ export const rowSchema = z.object({
     .describe(
       "True where the archive itself calls this identifier provisional: it can be replaced once a cataloguer settles the record, so a citation carrying it can stop naming anything. Null on an archive that mints one kind of identifier and says nothing about settling it, which is not the same as an archive stating this one is settled.",
     ),
+  ...foundByFields,
 });
 
 /**
@@ -203,9 +226,8 @@ export const reportSchema = z.object({
   skipped: z
     .number()
     .int()
-    .nullable()
     .describe(
-      "Rows this archive sent in a shape the server could not read, and left out. Null on an answer served from a cache that kept the rows and not the count of what was dropped building them.",
+      "Rows this archive sent in a shape the server could not read, and left out of this answer. Always a count, so it reads the same way on every answer. Rows served out of a cache were counted the same way when they were first read, and 'cached' marks an answer whose count can be short of a drop nobody kept a record of.",
     ),
   more_on_this_archive: z
     .boolean()
@@ -269,7 +291,15 @@ export const reportSchema = z.object({
   corpus: z
     .string()
     .nullable()
-    .describe("What body of material this archive's full-text index reads."),
+    .describe(
+      "What body of material this archive's full-text index reads. Null where this answer did not read it.",
+    ),
+  requires_every_word: z
+    .boolean()
+    .nullable()
+    .describe(
+      "Whether the index this answer put the words to answers only where every word given appears. It covers the words: a character that is neither a letter nor a digit is not a word to an index, and those are listed in 'non_word_characters' instead. False means the index ranks the words and answers with what it scores highest, so one of its rows can carry only some of them. Null on an archive that was not asked.",
+    ),
   cached: z.boolean().describe("Served from this server's short-lived in-memory cache."),
   error: z
     .object({ code: z.string(), message: z.string(), hint: z.string().optional() })
@@ -312,6 +342,8 @@ export function toHitPayload(hit: Hit): z.infer<typeof hitSchema> {
     inside_container: hit.insideContainer,
     published_on: hit.publishedOn,
     publication: hit.publication,
+    found_by_query: hit.foundByQuery ?? null,
+    found_by_derivation: hit.foundByDerivation ?? null,
   };
 }
 
@@ -331,16 +363,27 @@ export function toRowPayload(row: ItemRow): z.infer<typeof rowSchema> {
     location: row.location,
     online: row.online,
     identifier_provisional: row.identifierProvisional,
+    found_by_query: row.foundByQuery ?? null,
+    found_by_derivation: row.foundByDerivation ?? null,
   };
 }
 
-/** What a report says once the archive's own profile is attached to it. */
+/**
+ * What a report says once the archive's own profile is attached to it.
+ *
+ * A profile describes an archive from several angles, and each angle answers
+ * one question. The angles a call did not ask about are left out here rather
+ * than attached to every answer: which fields a catalogue matched is no part of
+ * a search of scanned text, and what a corpus of scanned text holds is no part
+ * of a catalogue answer.
+ */
 export interface ReportContext {
   yearMeans?: string;
   publishesPageNumber?: boolean;
   corpus?: string | null;
   searchesOn?: string;
   rowDescribes?: string;
+  requiresEveryWord?: boolean | null;
 }
 
 export function toReportPayload(
@@ -379,6 +422,7 @@ export function toReportPayload(
     year_means: context.yearMeans ?? null,
     publishes_page_number: context.publishesPageNumber ?? null,
     corpus: context.corpus ?? null,
+    requires_every_word: context.requiresEveryWord ?? null,
     cached: report.cached,
     error: report.error ?? null,
   };
@@ -391,8 +435,12 @@ export function toReportPayload(
  * was never asked is named with the reason, so an answer holding part of what
  * was asked for never reads as the whole of what exists.
  */
-export function reportNotes(reports: SourceReport[]): string[] {
+export function reportNotes(reports: SourceReport[], page = 1): string[] {
   const notes: string[] = [];
+  // Beyond the first page, an archive offering nothing has run out of rows
+  // where the list stops rather than run out of rows altogether. Naming the
+  // wording there sends a caller to rewrite a query that answered.
+  const pastTheRows = page > 1;
 
   const answered = reports.filter((report) => report.status === "answered");
   const failed = reports.filter((report) => report.status === "failed");
@@ -419,19 +467,21 @@ export function reportNotes(reports: SourceReport[]): string[] {
   }
 
   for (const report of answered) {
-    if (report.count === 0 && (report.skipped ?? 0) === 0) {
+    if (report.count === 0 && report.skipped === 0) {
       // Where wordings were derived and sent, the shorter wording and the other
       // spelling have already been tried, and offering them as the next move
       // would send a caller after a search this answer already holds.
       notes.push(
-        report.queries.filter((entry) => entry.ran).length > 1
-          ? `${report.name} answered and offered nothing under this wording, nor under any wording derived from it. That is a statement about those wordings as much as about the corpus.`
-          : `${report.name} answered and offered nothing under this wording. That is a statement about ` +
+        pastTheRows
+          ? `${report.name} answered and returned no row on page ${page}. Its rows stop before this page, which says nothing about the wording or about what it holds: read page 1 for the rows it did return.`
+          : report.queries.filter((entry) => entry.ran).length > 1
+            ? `${report.name} answered and offered nothing under this wording, nor under any wording derived from it. That is a statement about those wordings as much as about the corpus.`
+            : `${report.name} answered and offered nothing under this wording. That is a statement about ` +
               "the wording as much as about the corpus: try fewer words, or the spelling a scanner would " +
               "have produced.",
       );
     }
-    if (report.count === 0 && (report.skipped ?? 0) > 0) {
+    if (report.count === 0 && report.skipped > 0) {
       // Every row it sent was unreadable, so this answer establishes nothing
       // about what the archive holds. Reading it as an absence would report a
       // failure of this server as a fact about the corpus.
@@ -439,7 +489,7 @@ export function reportNotes(reports: SourceReport[]): string[] {
         `${report.name} answered, and every row it sent came back in a shape this server could not read. Nothing here is evidence about what it holds.`,
       );
     }
-    if ((report.skipped ?? 0) > 0) {
+    if (report.skipped > 0) {
       notes.push(
         `${report.name} sent ${report.skipped} row(s) in a shape this server could not read, and they were left out. Its own count above still counts them.`,
       );
@@ -459,13 +509,58 @@ export function reportNotes(reports: SourceReport[]): string[] {
     );
   }
 
-  if (reports.some((report) => report.cached)) {
+  // Which archive's rows were kept is what a reader checking one of them
+  // against its own site needs, and an answer merging several archives holds
+  // rows read a moment ago beside rows read once and kept.
+  const fromCache = reports.filter((report) => report.cached).map((report) => report.name);
+  if (fromCache.length > 0) {
     notes.push(
-      "Part of this answer came from an in-memory cache rather than from the archive itself.",
+      `What ${fromCache.join(" and ")} contributed here was served out of an in-memory cache rather than read again.`,
     );
   }
 
   return notes;
+}
+
+/**
+ * A character of the query that is no part of a word.
+ *
+ * Marks and punctuation are excluded: a mark belongs to the letter it sits on,
+ * and punctuation is what separates words rather than something an index could
+ * be expected to hold. What is left is a symbol, an emoji or a character that
+ * renders as nothing.
+ */
+const NO_PART_OF_A_WORD = /[^\p{L}\p{N}\p{M}\p{P}\s]/gu;
+
+/** The characters of a query that are neither letters nor digits, each once. */
+export function nonWordCharacters(query: string): string[] {
+  return [...new Set(query.match(NO_PART_OF_A_WORD) ?? [])];
+}
+
+/**
+ * What such a character does to the promise that every word given appears.
+ *
+ * These indexes answer on words. None of them reports which characters it set
+ * aside before looking, so an answer holding rows that carry none of these
+ * establishes nothing about them either way, and a flag saying every word given
+ * has to appear reads as a promise that they do. The characters are named with
+ * their code points, since one of them can be invisible where this is read.
+ */
+export function nonWordCharactersNote(found: readonly string[]): string | null {
+  if (found.length === 0) return null;
+  const named = found.map((character) => `"${character}" (${codePointOf(character)})`).join(", ");
+  const one = found.length === 1;
+  return (
+    `The query carries ${found.length} ${one ? "character that is" : "characters that are"} ` +
+    `neither a letter nor a digit: ${named}. These indexes answer on words, and none of them says ` +
+    `what it did with ${one ? "such a character" : "such characters"}, so a row here can carry ` +
+    `${one ? "none of it" : "none of them"}: requires_every_word covers the words that were given.`
+  );
+}
+
+/** A character named the way Unicode names it, for one that renders as nothing. */
+function codePointOf(character: string): string {
+  return `U+${(character.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, "0")}`;
 }
 
 /**
@@ -601,19 +696,31 @@ export function quoteForeign(value: string): string {
  * likely to have. Dropping from the end alone would drop exactly these.
  */
 const LOAD_BEARING =
-  /did not answer|was not asked|was not given|could not be read|opening of (?:a|the) page|page_opening|no leaf number|optical recognition|silence (?:is not|here is silence)|terms of reuse|licen[cs]e|https?:\/\/|never added together|offered nothing|none holds anything|read different material|different fields|provisional|Ask for page|Ask again with|reported \d|was asked \d+ quer|holds the union|no era|carr(?:y|ies) no year|ordered its own rows/i;
+  /did not answer|was not asked|was not given|could not be read|opening of (?:a|the) page|page_opening|no leaf number|optical recognition|no machine-read text|silence (?:is not|here is silence)|terms of reuse|licen[cs]e|https?:\/\/|never added together|offered nothing|none holds anything|read different material|different fields|provisional|Ask for page|Ask again with|reported \d|was asked \d+ quer|holds the union|no era|carr(?:y|ies) no year|ordered its own rows|returned no row on page|only some of|under a wording|never counted|titles alone|matched these words against|did not fit|neither a letter nor a digit|names media_type takes|description field/i;
 
 /**
  * How much of the block the notes may take.
  *
- * Enough for the sentences that qualify an answer, while leaving the answer
- * they qualify room to be one. What qualifies an answer grows with the number
- * of archives in it, since each one states its own count, its own order and its
- * own reason for being absent, so the share is set against a merged answer
- * rather than against a single archive's. Whatever is dropped is still in the
- * structured output, where a caller reading that instead loses nothing.
+ * What qualifies an answer grows with the number of archives in it: each one
+ * states its own count, the fields its index read, the narrowings it never
+ * received, what one of its rows is, and its own reason for being absent. The
+ * room is therefore set against an answer merged from several archives rather
+ * than against one archive's, and it is the rows that give way, since every row
+ * is in the structured output with its identifier and its address while a
+ * sentence qualifying the answer exists only here.
  */
-const NOTE_BUDGET = Math.round(MAX_TEXT_CHARS * 0.55);
+const NOTE_BUDGET = 5200;
+
+/**
+ * Room the answer itself keeps, whatever its notes come to.
+ *
+ * Notes that qualify nothing are worth less than the answer, so the trailer
+ * takes what it needs from the rows and stops here.
+ */
+const MIN_BODY_CHARS = 700;
+
+/** What one block can come to, notes and rows together. */
+export const MAX_BLOCK_CHARS = NOTE_BUDGET + MIN_BODY_CHARS;
 
 /** Room for one note, so no single note can crowd out all the others. */
 const MAX_NOTE_CHARS = 420;
@@ -627,18 +734,32 @@ export interface OkOptions {
 /**
  * The notes the block will carry, and the trailer they make with the credit.
  *
- * A long run of notes must not crowd out the answer it qualifies. What goes
- * first is the last note that qualifies the answer least, so the ones a reader
- * cannot do without are still there when the room runs out. Whatever is dropped
- * stays in the structured output.
+ * What goes first is the last note that qualifies the answer least, so the ones
+ * a reader cannot do without are still there when the room runs out. A note
+ * that does qualify the answer goes only after every other has gone, and never
+ * without the answer saying so: a warning silently absent is worse than no
+ * warning at all, because a reader who cannot see that anything was cut has no
+ * reason to look for it. The count and the place to read them therefore travel
+ * in the trailer itself, and everything cut is in the structured output in full.
  */
 function buildTrailer(options: OkOptions): string {
   const credit = options.credit ?? "No archive contributed to this answer.";
   // A note carrying an archive's own wording can run to any length, and one
   // long note would evict every other, including the ones a reader most needs.
   const kept = [...new Set((options.notes ?? []).map((note) => truncate(note, MAX_NOTE_CHARS)))];
+  let cut = 0;
 
-  while (kept.length > 0 && kept.join("\n").length > NOTE_BUDGET) {
+  const said = (): string[] =>
+    cut === 0
+      ? kept
+      : [
+          ...kept,
+          `${cut} further note(s) qualifying this answer did not fit in this block and were left out of it. Every one of them is in 'notes' in the structured output, in full.`,
+        ];
+
+  while (kept.length > 0 && said().join("\n").length > NOTE_BUDGET) {
+    // The last note that qualifies the answer least, and failing that the last
+    // one there is: the room has run out either way, and what leaves is counted.
     let victim = kept.length - 1;
     for (let index = kept.length - 1; index >= 0; index -= 1) {
       if (!LOAD_BEARING.test(kept[index]!)) {
@@ -647,12 +768,13 @@ function buildTrailer(options: OkOptions): string {
       }
     }
     kept.splice(victim, 1);
+    cut += 1;
   }
 
   // A note is assembled out of what an archive published: a title, a licence,
   // the wording of a failure. Any of those can carry a line terminator, and a
   // note that occupies two lines has written the server's second line itself.
-  return [...kept.map((note) => `Note: ${quoteForeign(note)}`), credit].join("\n");
+  return [...said().map((note) => `Note: ${quoteForeign(note)}`), credit].join("\n");
 }
 
 /**
@@ -674,7 +796,7 @@ export function ok(
 ): ToolResult {
   const trailer = buildTrailer(options);
   const cut = "\n\n[shortened; the full result is in the structured output]";
-  const room = MAX_TEXT_CHARS - `\n\n${trailer}`.length;
+  const room = roomFor(trailer);
   const text =
     body.length <= room
       ? `${body}\n\n${trailer}`
@@ -695,11 +817,23 @@ export function toToolError(error: unknown): ToolResult {
 
   // A message an archive's own reader wrote is bounded by nothing, and a
   // refusal is worth reading rather than scrolling.
-  const lines = [`[${known.code}] ${truncate(quoteForeign(known.message), MAX_TEXT_CHARS / 2)}`];
+  const lines = [`[${known.code}] ${truncate(quoteForeign(known.message), MAX_BODY_CHARS / 2)}`];
   if (known.details.hint) {
-    lines.push(`Hint: ${truncate(quoteForeign(known.details.hint), MAX_TEXT_CHARS / 4)}`);
+    lines.push(`Hint: ${truncate(quoteForeign(known.details.hint), MAX_BODY_CHARS / 4)}`);
   }
   return { content: [{ type: "text", text: lines.join("\n") }], isError: true };
+}
+
+/**
+ * How much room the answer itself has beside a trailer of a given length.
+ *
+ * The rows give way to the sentences that qualify them, down to a floor: an
+ * answer that shows nothing at all is not an answer, however well qualified.
+ * They give way no further than that, and the ceiling above holds however few
+ * notes there are, so a short trailer never turns the block into a wall.
+ */
+function roomFor(trailer: string): number {
+  return Math.min(MAX_BODY_CHARS, Math.max(MIN_BODY_CHARS, MAX_BODY_CHARS - trailer.length));
 }
 
 /**
@@ -710,7 +844,7 @@ export function toToolError(error: unknown): ToolResult {
  * being cut away.
  */
 export function roomForBody(options: OkOptions = {}): number {
-  return Math.max(200, MAX_TEXT_CHARS - buildTrailer(options).length - 60);
+  return Math.max(200, roomFor(buildTrailer(options)) - 60);
 }
 
 export function truncate(text: string, maxChars: number): string {

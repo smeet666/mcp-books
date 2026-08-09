@@ -116,6 +116,30 @@ describe("a string no archive would have minted", () => {
   });
 });
 
+describe("an identifier carrying a control character", () => {
+  // A control character renders as nothing, so the string a reader sees and the
+  // string an archive receives are two different identifiers.
+  const hidden = "archive:voyageofthecormorant\u000100pell";
+
+  it("is refused rather than sent as it was typed", () => {
+    expect(() => resolveId(hidden, sources)).toThrow(/control character/);
+  });
+
+  it("names no identifier in the refusal, since none was asked for", () => {
+    let message = "";
+    try {
+      resolveId(hidden, sources);
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).not.toContain("voyageofthecormorant00pell");
+  });
+
+  it("says where an identifier comes from", () => {
+    expect(hintOf(() => resolveId(hidden, sources))).toMatch(/search/i);
+  });
+});
+
 describe("naming the archive without resolving the record", () => {
   it("reads the prefix alone", () => {
     expect(sourceOf("loc:anything/at/all", sources)).toBe("loc");

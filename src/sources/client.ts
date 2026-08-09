@@ -16,10 +16,12 @@
  * states rather than a score: an excerpt that carries the searched words comes
  * before an excerpt that is the opening of a page and does not carry them.
  *
- * A question is also put in more than one wording. These indexes require every
- * word given to appear, so a question written as a sentence comes back empty on
- * a work the archives hold several copies of, and that emptiness is
- * indistinguishable from a corpus holding nothing. Each archive is therefore
+ * A question is also put in more than one wording. An index that answers only
+ * where every word given appears comes back empty on a question written as a
+ * sentence, even for a work the archive holds several copies of, and that
+ * emptiness is indistinguishable from a corpus holding nothing. An index that
+ * ranks the words instead answers the same question with whatever it scores
+ * highest. Each archive is therefore
  * offered a short ladder of wordings derived from the query, in sequence so its
  * pacing is kept, stopping as soon as the rows asked for are found. What the
  * union holds is deduplicated on the identifier this server hands out, and
@@ -205,7 +207,7 @@ interface Attempt<T> {
   /** What the archive said about rows past this page, where it says instead of counting. */
   hasMore: boolean | null;
   attribution: string | null;
-  skipped: number | null;
+  skipped: number;
   error: { code: string; message: string; hint?: string } | null;
   /** Every wording derived for this archive, sent or withheld. */
   queries: QueryAttempt[];
@@ -218,6 +220,10 @@ interface Attempt<T> {
    * never counted.
    */
   primaryCount: number;
+  /** The wording the archive's own total was reported for. */
+  totalFromQuery: string | null;
+  /** Whether a later wording contributed rows the total never counted. */
+  beyondThatWording: boolean;
 }
 
 /** Whether an answer may be built out of more than the words as asked. */
@@ -256,6 +262,18 @@ function reportOf<T>(
   limit: number,
   filtersDropped: DroppedFilter[] = [],
 ): SourceReport {
+  // An archive counts what one wording matches. Where a later wording brought
+  // back rows of its own, that number counts neither them nor the list they are
+  // in, and reporting it beside them says a count of nothing sits above rows
+  // the same archive published. It keeps the number and says what it counts.
+  const acrossWordings = attempt.beyondThatWording && attempt.totalFromQuery !== null;
+  const means =
+    attempt.reportedTotalMeans === null
+      ? null
+      : acrossWordings
+        ? `${attempt.reportedTotalMeans}. ${attempt.source.name} reported that count for the wording "${attempt.totalFromQuery}" alone, and rows here came back under a further wording it never counted`
+        : attempt.reportedTotalMeans;
+
   return {
     source: attempt.source.id,
     name: attempt.source.name,
@@ -264,7 +282,7 @@ function reportOf<T>(
     absentBecause: null,
     count,
     reportedTotal: attempt.reportedTotal,
-    reportedTotalMeans: attempt.reportedTotalMeans,
+    reportedTotalMeans: means,
     skipped: attempt.skipped,
     orderedOn: attempt.orderedOn,
     mediaTypeAsked: attempt.mediaTypeAsked,
@@ -272,11 +290,14 @@ function reportOf<T>(
     filtersDropped,
     // An archive that says whether anything follows this page is taken at its
     // word; one that publishes a count instead has the question answered from
-    // the count and the page, which is the only way to ask it there.
-    moreOnThisArchive: attempt.error
-      ? null
-      : (attempt.hasMore ??
-        moreBeyond(attempt.reportedTotal, page, limit, Math.min(attempt.primaryCount, limit))),
+    // the count and the page, which is the only way to ask it there. Neither
+    // answer covers a list built out of more than one wording: each wording
+    // pages on a count of its own, so nothing here establishes what follows.
+    moreOnThisArchive:
+      attempt.error || acrossWordings
+        ? null
+        : (attempt.hasMore ??
+          moreBeyond(attempt.reportedTotal, page, limit, Math.min(attempt.primaryCount, limit))),
     queries: attempt.queries,
     cached: attempt.cached,
     error: attempt.error,
@@ -328,6 +349,29 @@ export function droppedFilters(
         source.cannotFilter[filter] ??
         `${source.name} does not apply this, and no reason was recorded for it.`,
     }));
+}
+
+/**
+ * Refuse a year range that names no year.
+ *
+ * A range whose earliest bound is later than its latest describes an empty
+ * span, and an index has no way to apply it: one archive answers with nothing,
+ * another treats the pair as unusable and answers as though no range had been
+ * given. Both are the archive's own reading, neither is reportable as the range
+ * having been applied, and the archive that ignored it hands back rows outside
+ * the span with nothing to mark them.
+ *
+ * It is refused here rather than dropped per archive. A narrowing named as
+ * dropped is one a catalogue cannot express, which this range is not: it is a
+ * request no archive can answer, present or future, so a refusal is what it is
+ * owed, and the caller is told which way round the bounds go.
+ */
+function checkYearRange(yearFrom?: number, yearTo?: number): void {
+  if (yearFrom === undefined || yearTo === undefined || yearFrom <= yearTo) return;
+  throw invalidInput(
+    `year_from ${yearFrom} is later than year_to ${yearTo}, so the range names no year and no archive can be narrowed to it.`,
+    `Ask for year_from ${yearTo} and year_to ${yearFrom} to search that span, or give one bound and leave the other out.`,
+  );
 }
 
 /** The narrowings this call actually carries, named as a caller names them. */
@@ -388,6 +432,23 @@ export function carryingTheWordsFirst(hits: readonly Hit[]): Hit[] {
     ...hits.filter((hit) => hit.excerptKind !== "passage"),
   ];
 }
+
+/**
+ * What to make of an archive that answered about an identifier and served no
+ * record this server could read whole.
+ *
+ * An archive answers about identifiers it holds no record of its own for: a
+ * page inside something larger, a heading its catalogue files under a shape a
+ * record does not take. A search hands those identifiers out, so reading one is
+ * a question the archive answered rather than a defect, and a caller told to
+ * open a bug report is told to report the archive's own arrangement of its
+ * holdings. What is left to do is open the address the row already carries.
+ */
+const servesNoWholeRecord = (name: string): string =>
+  `${name} answered about this identifier and served no whole record for it. Some of the ` +
+  "identifiers a search hands back name something an archive does not keep a record of its own " +
+  "for, and there is nothing here to read: open the source_url the row carried to see what sits " +
+  "at that identifier.";
 
 /** What one archive was asked to look under, or why it was not asked at all. */
 interface MediaTypeChoice {
@@ -594,6 +655,7 @@ export class BooksClient {
         "Name a title, a creator or a subject.",
       );
     }
+    checkYearRange(options.yearFrom, options.yearTo);
 
     const chosen = selectSources(this.sources, wanted);
     const byCapability = splitByCapability(chosen, "search_items");
@@ -711,7 +773,9 @@ export class BooksClient {
       throw new BooksError(
         known.code,
         `${read.source.name} was asked for "${read.reference}" and the read failed: ${known.message}`,
-        known.details,
+        known.code === "parse_failure"
+          ? { ...known.details, hint: servesNoWholeRecord(read.source.name) }
+          : known.details,
       );
     }
   }
@@ -773,8 +837,10 @@ export class BooksClient {
     const seen = new Set<string>();
     let first: ReadRows<T> | null = null;
     let primaryCount = 0;
+    let totalFromQuery: string | null = null;
+    let beyondThatWording = false;
     let cached = false;
-    let skipped: number | null = 0;
+    let skipped = 0;
     let error: Attempt<T>["error"] = null;
     let stopped: string | null = null;
 
@@ -801,26 +867,33 @@ export class BooksClient {
           // records, and folding them together would drop one of them.
           if (seen.has(row.id)) continue;
           seen.add(row.id);
-          rows.push(row);
+          // The wording rides on the row from here, so a reader holding one row
+          // can tell how much of the question it answers. A row a later wording
+          // repeats keeps the wording that first returned it, which is the one
+          // that reached it.
+          rows.push({
+            ...row,
+            foundByQuery: variant.query,
+            foundByDerivation: variant.derivation,
+          });
           added += 1;
         }
+        if (first !== null && added > 0) beyondThatWording = true;
         if (read.skipped > 0) {
           this.logger.warn(
             `${source.name} sent ${read.skipped} row(s) this server could not read; they were left out.`,
           );
         }
-        // An answer served from a reader's cache carries the rows it kept and
-        // no record of what was dropped while they were first read, so the
-        // count is unknown here rather than zero.
-        if (read.cached) {
-          cached = true;
-          skipped = null;
-        } else if (skipped !== null) {
-          skipped += read.skipped;
-        }
+        if (read.cached) cached = true;
+        // The rows in hand are counted the same way whether they were just
+        // read or kept from an earlier read, so the count keeps one shape. What
+        // an earlier read dropped before keeping the rest is nobody's count,
+        // and 'cached' is where a caller sees that this one can be short of it.
+        skipped += read.skipped;
         if (first === null) {
           first = read;
           primaryCount = read.rows.length;
+          totalFromQuery = variant.query;
         }
         queries.push({
           query: variant.query,
@@ -853,7 +926,7 @@ export class BooksClient {
         // failure of that wording, and reporting it as an archive that did not
         // answer would throw away rows the archive did give.
         if (first === null) error = failure;
-        stopped = "the archive did not answer the wording before this one";
+        stopped = `${source.name} did not answer the wording before this one`;
       }
     }
 
@@ -871,6 +944,8 @@ export class BooksClient {
       error,
       queries,
       primaryCount,
+      totalFromQuery,
+      beyondThatWording,
     };
   }
 }

@@ -16,6 +16,7 @@ import {
   fakeClient,
   insideArgs,
   itemArgs,
+  payloadOf,
   recordArgs,
   textOf,
 } from "./support.js";
@@ -124,5 +125,21 @@ describe("the order archives are asked in changes nothing", () => {
     // The registry's own order decides the interleave, so naming the archives
     // in either order asks the same question and answers it the same way.
     expect(forward).toBe(backward);
+  });
+});
+
+describe("a field a caller reads keeps one shape", () => {
+  it("counts the rows left out as a number, read again or served from a cache", async () => {
+    const countsOf = async (cached: boolean) => {
+      const result = await runSearchItems(fakeClient({ loc: { cached } }), itemArgs());
+      const payload = payloadOf<{ per_source: Array<{ name: string; skipped: unknown }> }>(result);
+      return payload.per_source.map((report) => [report.name, report.skipped] as const);
+    };
+
+    const fresh = await countsOf(false);
+    const served = await countsOf(true);
+
+    expect(served).toEqual(fresh);
+    for (const [, skipped] of served) expect(typeof skipped).toBe("number");
   });
 });

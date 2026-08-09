@@ -118,12 +118,20 @@ export const BNF_PROFILE: SourceProfile = {
     "this catalogue publishes its metadata on the condition that the source is named and the date the metadata was retrieved is stated, so its credit carries that date and both belong beside anything repeated from it",
   searchesOn:
     "the title of a work and nothing beside it, so a person's name reaches this index as words in a title",
+  searchesOnCaveat:
+    "reads titles alone, so a person's name given to it comes back as the books about that person rather than the books by them.",
+  catalogueRequiresEveryWord: true,
+  insideRequiresEveryWord: null,
   rowDescribes:
     "a work as an entity in the catalogue, whose editions and whose author are records of their own rather than a copy anybody holds",
   // The catalogue describes what the library holds and carries none of the text.
   insideCorpus: null,
   yearMeans:
     "the year the catalogue gives the work, read only where the record states a plain year; a record dating a work in words carries none",
+  // It describes a work through the headings and classes it links rather than
+  // through prose, so no description is read from it and there is nothing to
+  // say about what such a field would hold.
+  descriptionMeans: null,
   publishesPageNumber: false,
   // Its own name for the kind of thing it files, which names an entity rather
   // than a holding.
@@ -311,7 +319,15 @@ export function bnfDetail(payload: unknown, retrievedAt: string): ItemDetail {
   const record = (payload ?? {}) as Partial<BnfWorkDetail>;
   const identifier = required(reference(record.id), "id", BNF_PROFILE);
 
-  const copies = (Array.isArray(record.depictions) ? record.depictions : [])
+  // A record points at digitised documents of two natures. One stands for the
+  // work: a reader following it reads the thing itself, or the text a machine
+  // read off it. The other illustrates the record, and a catalogue attaches
+  // dozens of those, each an image of some other document entirely. Counting an
+  // illustration as a copy tells a reader thirty copies are open to them where
+  // none is.
+  const digitised = Array.isArray(record.depictions) ? record.depictions : [];
+  const openable = digitised.filter((link) => STANDS_FOR_THE_WORK.has(String(link?.role)));
+  const copies = openable
     .slice(0, MOST_COPIES)
     .map((link) => ({
       label: roleWords(link?.role),
@@ -359,12 +375,19 @@ export function bnfDetail(payload: unknown, retrievedAt: string): ItemDetail {
     },
     copies,
     copiesAvailable: copies.length,
-    // The catalogue lists digitised documents and nothing beside them.
-    generatedEntries: 0,
+    generatedEntries: digitised.length - copies.length,
     context,
     unreadFields: UNREAD_FIELDS,
   };
 }
+
+/**
+ * The natures of digitised document that stand for the work itself.
+ *
+ * A reproduction is the edition, scanned; the text a machine read off it is
+ * that edition's words. Either is a copy a reader can open and find the work in.
+ */
+const STANDS_FOR_THE_WORK: ReadonlySet<string> = new Set(["reproduction", "ocr"]);
 
 /**
  * What a digitised document is to the record that points at it, in words.

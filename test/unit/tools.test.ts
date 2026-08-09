@@ -239,7 +239,7 @@ describe("get_item", () => {
       recordArgs({ identifier: "archive:voyageofthecormorant00pell", sections: ["copies"] }),
     );
     expect(textOf(result)).toMatch(
-      /lists 2 further entries against this record that are its own bookkeeping/,
+      /lists 2 further entries against this record that are not copies of the thing/,
     );
   });
 
@@ -248,6 +248,25 @@ describe("get_item", () => {
       await runGetItem(fakeClient(), recordArgs({ identifier: "loc:2011000001" })),
     );
     expect(payload.item.year_means).toMatch(/catalogue record/);
+  });
+
+  it("says what an archive files under the field this server reads as a description", async () => {
+    // A field called description holds an account of the thing on one record
+    // and the place it was published on the next, and both arrive here as the
+    // record's prose. What the field is has to travel with what it holds.
+    const payload = payloadOf<{ item: { description_means: string | null }; notes: string[] }>(
+      await runGetItem(fakeClient(), recordArgs({ identifier: "loc:2011000001" })),
+    );
+
+    expect(payload.item.description_means).toMatch(/\w/);
+    expect(payload.notes.join(" ")).toContain(payload.item.description_means!);
+  });
+
+  it("says nothing of the kind on an archive it reads no description from", async () => {
+    const payload = payloadOf<{ item: { description_means: string | null } }>(
+      await runGetItem(fakeClient(), recordArgs({ identifier: "bnf:cb11940100c" })),
+    );
+    expect(payload.item.description_means).toBeNull();
   });
 });
 

@@ -19,6 +19,8 @@ import {
   OCR_CAVEAT,
   creditLine,
   hitSchema,
+  nonWordCharacters,
+  nonWordCharactersNote,
   ok,
   queryNotes,
   quoteForeign,
@@ -45,7 +47,8 @@ export const searchInsideDescription = [
   "Every count is that archive's own and counts something of its own: documents in one place, leaves in another. They are never added together, and there is no total across archives.",
   "Rows are interleaved one archive at a time. Nothing ranks them against each other and nothing orders them by date, because a year is measured on different things in each archive.",
   "Matches whose excerpt carries the searched words are placed before matches whose excerpt is a 'page_opening' and carries them nowhere. That rests on what each row states about its own excerpt rather than on any score, no match is ever dropped for it, and the interleaving holds inside each of the two groups.",
-  "These indexes require every word given to appear, so a question written as a sentence returns nothing on a work the archives hold several copies of. Shorter and differently spelled wordings are therefore derived from the query and asked for their union, which costs nothing extra when the words as asked already answer. Every wording sent is named in 'per_source' with what it returned, and 'fan_out' turns the derivation off.",
+  "The archives read the words given in different ways, and 'per_source' says which each one does. An index that answers only where every word appears returns nothing for a question written as a sentence, even on a work it holds several copies of; an index that scores the words instead answers such a question with the pages it ranks highest, which can carry only some of them. Either way it is the words: a character that is neither a letter nor a digit is no word to an index, and 'non_word_characters' lists any the query carried.",
+  "Shorter and differently spelled wordings are therefore derived from the query and asked for their union, which costs nothing extra when the words as asked already answer. Every wording sent is named in 'per_source' with what it returned, every match carries the wording that returned it in 'found_by_query', and 'fan_out' turns the derivation off.",
   "Use search_items for a work by its title, its creator or its subject: this tool reads the text on the pages and knows nothing of a catalogue, so a title given here finds every book that happens to mention it and misses the book itself.",
   "Answers take several seconds, because one of the archives publishes a request ceiling this server keeps to. A slow answer is the pacing, not a stall.",
 ].join(" ");
@@ -94,7 +97,7 @@ export const searchInsideInput = strictInput({
     .boolean()
     .default(true)
     .describe(
-      "Whether to derive shorter and differently spelled wordings from the query and ask each archive for the union of what they return. These indexes require every word given to appear, so a question written as a sentence returns nothing while two of its words return a great deal. An archive is asked a derived wording only when the words as asked did not return as many rows as 'limit', so a query that works costs one request. Set false to send exactly the words given. 'per_source' names every wording, sent or not.",
+      "Whether to derive shorter and differently spelled wordings from the query and ask each archive for the union of what they return. A question written as a sentence returns nothing where every word given has to appear, and the rows an index scores highest where it does not. An archive is asked a derived wording only when the words as asked did not return as many rows as 'limit', so a query that works costs one request. Set false to send exactly the words given. 'per_source' names every wording, sent or not, and each match names the one that returned it.",
     ),
   sources: z
     .array(z.enum(SOURCE_VALUES))
@@ -120,6 +123,11 @@ export const searchInsideOutput = z.object({
     .int()
     .describe(
       "Requests this server sent for this answer, counting every wording on every archive. Each archive's own wordings are in 'per_source'.",
+    ),
+  non_word_characters: z
+    .array(z.string())
+    .describe(
+      "Characters in the query that are neither letters nor digits. These indexes answer on words, so a match here can carry none of them, and 'requires_every_word' covers the words that were given rather than these.",
     ),
   order: z.string().describe("How the list was built, in words."),
   excerpt_kinds: z
@@ -155,10 +163,26 @@ export async function runSearchInside(
     );
 
     const hits = merged.hits.map(toHitPayload);
-    const notes = [...queryNotes(merged.reports), ...reportNotes(merged.reports)];
+    const notes = [...queryNotes(merged.reports), ...reportNotes(merged.reports, args.page)];
 
     const answered = merged.reports.filter((report) => report.status === "answered");
     const contributed = merged.reports.filter((report) => report.count > 0);
+
+    // An index that scores the words rather than requiring them all makes a row
+    // a weaker statement: it can carry some of the words and not the rest. A
+    // reader comparing rows from two archives is comparing two promises.
+    for (const report of contributed) {
+      if (profiles.get(report.source)?.insideRequiresEveryWord !== false) continue;
+      notes.push(
+        `${report.name} does not require every word given to appear: it scores them and answers with the pages it ranks highest, so a match of its here can carry only some of them. Read the page before saying the words were printed together.`,
+      );
+    }
+
+    // An index that does require every word given requires every word, and a
+    // character that is no word to it falls outside that promise.
+    const outsideTheWords = nonWordCharacters(args.query);
+    const outsideNote = nonWordCharactersNote(outsideTheWords);
+    if (outsideNote) notes.push(outsideNote);
 
     // The corpora themselves are named in 'per_source', so this says only what
     // follows from their being different, which is what a merged list invites a
@@ -215,13 +239,33 @@ export async function runSearchInside(
       );
     }
 
+    // An archive answers with a row and no text of it, and the row is then a
+    // place a phrase was matched with nothing quoted from it. Said here, since
+    // a match rendered as a title and an address reads as a match whose passage
+    // the block had no room for.
+    const withoutText = hits.filter((hit) => hit.excerpts.length === 0).length;
+    if (withoutText > 0) {
+      const which =
+        withoutText < hits.length
+          ? `${withoutText} of the ${hits.length} matches here`
+          : hits.length === 1
+            ? "The one match in this answer"
+            : "Every match in this answer";
+      notes.push(
+        `${which} came back with no machine-read text, so nothing here quotes ${withoutText === 1 ? "it" : "them"}: follow source_url to read the page.`,
+      );
+    }
+
     if (hits.some((hit) => hit.inside_container)) {
       notes.push(
         "Some matches sit inside a document bundled in a larger record. On those the title, creator and year describe the container, and 'matched_file' names what actually holds the passage.",
       );
     }
 
-    if (hits.length > 0) notes.push(OCR_CAVEAT);
+    // The caveat is what an excerpt is worth, so it belongs to an answer that
+    // carries one. On an answer quoting nothing it describes text that is not
+    // there and takes room from a sentence that does qualify the answer.
+    if (excerptKinds.passage + excerptKinds.page_opening > 0) notes.push(OCR_CAVEAT);
 
     for (const report of answered) {
       if (report.moreOnThisArchive !== true) continue;
@@ -262,9 +306,13 @@ export async function runSearchInside(
         hits,
         hit_count: hits.length,
         per_source: merged.reports.map((report) =>
-          toReportPayload(report, contextFor(profiles.get(report.source))),
+          toReportPayload(
+            report,
+            insideContext(profiles.get(report.source), report.status !== "absent"),
+          ),
         ),
         queries_run: queriesRun,
+        non_word_characters: outsideTheWords,
         order,
         excerpt_kinds: excerptKinds,
         notes,
@@ -284,15 +332,23 @@ export async function runSearchInside(
   }
 }
 
-/** The archive's own profile, attached to its report so a null can be read. */
-export function contextFor(profile: SourceProfile | undefined) {
-  return profile
+/**
+ * What a full-text answer says about the archive that gave it.
+ *
+ * The full-text index and the catalogue are two indexes over two bodies of
+ * material, and a profile describes both. Only what this tool actually read is
+ * attached: the corpus behind the words, whether that index publishes a leaf,
+ * whether it answers only where every word appears, and what a year on its rows
+ * was measured on. An archive that was never asked has nothing attached at all,
+ * since a description of what it reads when asked is no part of this answer.
+ */
+export function insideContext(profile: SourceProfile | undefined, asked: boolean) {
+  return profile && asked
     ? {
         yearMeans: profile.yearMeans,
         publishesPageNumber: profile.publishesPageNumber,
         corpus: profile.insideCorpus,
-        searchesOn: profile.searchesOn,
-        rowDescribes: profile.rowDescribes,
+        requiresEveryWord: profile.insideRequiresEveryWord,
       }
     : {};
 }
@@ -333,13 +389,28 @@ function renderBody(
       .join(" ");
 
     const label = hit.excerpt_kind === "page_opening" ? "page opening" : "passage";
-    const passages = hit.excerpts
-      .map((excerpt) => `     [${label}] ${truncate(quoteForeign(excerpt), perHit)}`)
-      .join("\n");
+    // A match with nothing under it reads as a match the block had no room to
+    // quote. It is the archive that sent no text, and the line says so.
+    const passages =
+      hit.excerpts.length === 0
+        ? "     [no machine-read text came back with this match]"
+        : hit.excerpts
+            .map((excerpt) => `     [${label}] ${truncate(quoteForeign(excerpt), perHit)}`)
+            .join("\n");
+
+    // A match the words as asked returned needs no such line: the wording is
+    // the head of the block above it. A match a derived wording returned
+    // answers that wording's words and not the question as written, and a
+    // reader who cannot see which is which reads it as an answer to the whole.
+    const under =
+      hit.found_by_query !== null && hit.found_by_query !== args.query
+        ? `     found under: ${quoteForeign(hit.found_by_query)}`
+        : "";
 
     return [
       where,
       passages,
+      under,
       `     id: ${quoteForeign(hit.id)}`,
       `     ${quoteForeign(hit.source_url)}`,
     ]

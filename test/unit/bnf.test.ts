@@ -24,6 +24,7 @@ import { runSearchInside } from "../../src/tools/searchInside.js";
 import { runSearchItems } from "../../src/tools/searchItems.js";
 import {
   BNF_RETRIEVED_AT,
+  bnfWorkRecord,
   bnfWorkRows,
   fakeClient,
   insideArgs,
@@ -334,17 +335,54 @@ describe("a work read in full", () => {
     expect(payload.notes.join(" ")).toMatch(/edition/i);
   });
 
+  it("counts as a copy only what stands for the work rather than what illustrates it", async () => {
+    const record = {
+      ...bnfWorkRecord,
+      depictions: Array.from({ length: 30 }, (_, index) => ({
+        ark: `ark:/12148/btv1b860000${index}x`,
+        url: `https://gallica.bnf.fr/ark:/12148/btv1b860000${index}x.thumbnail`,
+        role: "depiction" as const,
+        fromId: "cb11940100c",
+        fromTitle: "Relation du voyage du Cormoran",
+      })),
+    };
+    const payload = payloadOf<{
+      item: { copies: unknown[]; copies_available: number; generated_entries: number };
+    }>(
+      await runGetItem(
+        fakeClient({ bnf: { record } }),
+        recordArgs({ identifier: "bnf:cb11940100c", sections: ["copies"] }),
+      ),
+    );
+
+    expect(payload.item.copies_available).toBe(0);
+    expect(payload.item.copies).toHaveLength(0);
+    expect(payload.item.generated_entries).toBe(30);
+  });
+
   it("offers a digitised document as an address for a person to open", async () => {
+    const record = {
+      ...bnfWorkRecord,
+      depictions: [
+        {
+          ark: "ark:/12148/btv1b8600001x",
+          url: "https://gallica.bnf.fr/ark:/12148/btv1b8600001x",
+          role: "reproduction" as const,
+          fromId: "cb11940100c",
+          fromTitle: "Relation du voyage du Cormoran",
+        },
+      ],
+    };
     const payload = payloadOf<{ item: { copies: Array<{ label: string | null; url: string }> } }>(
       await runGetItem(
-        fakeClient(),
+        fakeClient({ bnf: { record } }),
         recordArgs({ identifier: "bnf:cb11940100c", sections: ["copies"] }),
       ),
     );
 
     expect(payload.item.copies).toHaveLength(1);
     expect(payload.item.copies[0]?.url).toContain("gallica.bnf.fr");
-    expect(String(payload.item.copies[0]?.label)).toMatch(/illustrat|image|reproduction|text/i);
+    expect(String(payload.item.copies[0]?.label)).toMatch(/copy|reproduction|text/i);
   });
 
   it("routes an address on the catalogue's own host without a prefix", async () => {

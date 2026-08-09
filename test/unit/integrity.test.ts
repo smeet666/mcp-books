@@ -16,6 +16,7 @@ import {
   fakeClient,
   insideArgs,
   itemArgs,
+  locInsideHits,
   locRecordWithTerms,
   payloadOf,
   recordArgs,
@@ -219,6 +220,19 @@ describe("identifiers", () => {
     expect(fromLoc.identifier).toContain("/");
     expect(fromLoc.id.startsWith("loc:")).toBe(true);
   });
+
+  it("are never quoted in a shape other than the one an archive received", async () => {
+    // A control character is invisible where an answer is rendered, so an
+    // answer quoting the string with it removed names a record nobody asked
+    // about, and an absence stated of that name was never established.
+    const result = await runGetItem(
+      fakeClient(),
+      recordArgs({ identifier: "archive:voyageofthecormorant\u000100pell" }),
+    );
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).not.toContain("voyageofthecormorant00pell");
+  });
 });
 
 describe("terms of reuse", () => {
@@ -255,6 +269,36 @@ describe("machine-read text", () => {
   it("is presented as what a scanner read", async () => {
     const payload = await inside();
     expect(payload.notes.join(" ")).toMatch(/optical recognition/);
+  });
+
+  it("is not described where an answer carries none", async () => {
+    const payload = payloadOf<InsidePayload>(
+      await runSearchInside(
+        fakeClient({
+          archive: { insideHits: [] },
+          loc: { insideHits: [{ ...locInsideHits[0]!, excerpts: [] }] },
+        }),
+        insideArgs(),
+      ),
+    );
+
+    expect(payload.hits.length).toBe(1);
+    expect(payload.excerpt_kinds).toEqual({ passage: 0, page_opening: 0 });
+    expect(payload.notes.join(" ")).not.toMatch(/optical recognition/);
+  });
+
+  it("is named as absent on a match that came back with none", async () => {
+    const result = await runSearchInside(
+      fakeClient({
+        archive: { insideHits: [] },
+        loc: { insideHits: [{ ...locInsideHits[0]!, excerpts: [] }] },
+      }),
+      insideArgs(),
+    );
+    const payload = payloadOf<InsidePayload>(result);
+
+    expect(payload.notes.join(" ")).toMatch(/no machine-read text/);
+    expect(textOf(result)).toMatch(/no machine-read text/);
   });
 });
 

@@ -1,13 +1,13 @@
 /**
  * One question, several wordings.
  *
- * The indexes behind these archives are conjunctive: every word given has to
- * appear on the same page or in the same record. A question asked in natural
- * language therefore returns nothing while a shorter wording built out of the
- * same words returns a great deal, and that nothing reads as an archive holding
- * none of the thing asked about. These cases hold the server to deriving those
- * shorter wordings, asking for the union, keeping the requests bounded, and
- * saying exactly what was sent.
+ * An index that answers only where every word given appears returns nothing for
+ * a question asked in natural language, while a shorter wording built out of
+ * the same words returns a great deal, and that nothing reads as an archive
+ * holding none of the thing asked about. These cases hold the server to
+ * deriving those shorter wordings, keeping the words that name the thing rather
+ * than the words that frame the question, asking for the union, bounding the
+ * requests, and saying exactly what was sent and which wording reached a row.
  */
 
 import { describe, expect, it } from "vitest";
@@ -182,8 +182,8 @@ interface InsidePayload {
 }
 
 /** The whole question, and the wording that actually reaches the work. */
-const LONG_QUESTION = "Vipère au poing dénouement se termine roman Bazin fin";
-const SHORT_WORDING = "vipère poing";
+const LONG_QUESTION = "Le dénouement du roman Vipère au poing de Bazin";
+const SHORT_WORDING = "Vipère Bazin";
 
 /* -------------------------------------------------------------------------- */
 /* Deriving the wordings                                                       */
@@ -195,16 +195,67 @@ describe("the wordings derived from one question", () => {
     expect(derived[0]?.query).toBe(LONG_QUESTION);
   });
 
-  it("reduces a long question to its leading words", () => {
+  it("reduces a question to the words it writes with a capital, in the order they were written", () => {
     const derived = deriveQueries(LONG_QUESTION).map((variant) => variant.query);
-    expect(derived).toContain("vipère poing dénouement");
     expect(derived).toContain(SHORT_WORDING);
+  });
+
+  it("keeps a short name a question capitalises over a long word it does not", () => {
+    const derived = deriveQueries(
+      "what did Victor Hugo write about the cathedral of Notre Dame in Paris",
+    ).map((variant) => variant.query);
+
+    expect(
+      derived.some((query) => /^Victor Hugo\b/.test(query)),
+      derived.join(" | "),
+    ).toBe(true);
+    expect(derived.some((query) => /cathedral/.test(query) && !/Hugo/.test(query))).toBe(false);
+  });
+
+  it("never reduces a question to the words that frame it", () => {
+    const derived = deriveQueries("did Poe write about the raven").map((variant) => variant.query);
+
+    expect(derived).not.toContain("write about");
+    expect(
+      derived.some((query) => /Poe/.test(query)),
+      derived.join(" | "),
+    ).toBe(true);
+  });
+
+  it("keeps a run of capitalised words whole rather than cutting through a name", () => {
+    const derived = deriveQueries(
+      "where is the abbey of Saint Victor in the city of Marseille",
+    ).map((variant) => variant.query);
+
+    expect(
+      derived.some((query) => /Saint Victor/.test(query)),
+      derived.join(" | "),
+    ).toBe(true);
+    expect(derived.some((query) => /\bSaint\b/.test(query) && !/Victor/.test(query))).toBe(false);
+  });
+
+  it("keeps the words that name the thing rather than the words that frame the question", () => {
+    const derived = deriveQueries(
+      "What did the whaling captain say about the white whale in the year 1851?",
+    ).map((variant) => variant.query);
+
+    expect(derived).not.toContain("what did the");
+    expect(derived).not.toContain("what did");
+    expect(
+      derived.some((query) => query.includes("whaling") && query.includes("captain")),
+      derived.join(" | "),
+    ).toBe(true);
+  });
+
+  it("says how a reduction was made without claiming where a question puts its words", () => {
+    const derivations = deriveQueries(LONG_QUESTION).map((variant) => variant.derivation);
+    expect(derivations.some((words) => /written before/.test(words))).toBe(false);
   });
 
   it("puts the reductions before the spellings, because length is what a long question fails on", () => {
     const derived = deriveQueries(LONG_QUESTION).map((variant) => variant.query);
     expect(derived.indexOf(SHORT_WORDING)).toBeLessThan(
-      derived.indexOf("Vipere au poing denouement se termine roman Bazin fin"),
+      derived.indexOf("Le denouement du roman Vipere au poing de Bazin"),
     );
   });
 
@@ -216,6 +267,13 @@ describe("the wordings derived from one question", () => {
   it("offers the spelling without diacritics", () => {
     const derived = deriveQueries("Kâmasûtra").map((variant) => variant.query);
     expect(derived).toContain("Kamasutra");
+  });
+
+  it("removes no mark that is part of a letter of its own in the script that wrote it", () => {
+    const derived = deriveQueries("Достоевский").map((variant) => variant.query);
+
+    expect(derived).not.toContain("Достоевскии");
+    expect(derived).toEqual(["Достоевский"]);
   });
 
   it("runs two words together, because a name is filed as one word in one place", () => {
@@ -360,7 +418,7 @@ describe("the number of requests", () => {
       {
         inside: { [LONG_QUESTION]: ["a1"] },
         fails: {
-          "vipère poing dénouement": new ReaderError("timeout", "the request ran out of time"),
+          [SHORT_WORDING]: new ReaderError("timeout", "the request ran out of time"),
         },
       },
       {},
@@ -387,7 +445,7 @@ describe("the union of what came back", () => {
       {
         inside: {
           [LONG_QUESTION]: ["a1"],
-          "vipère poing dénouement": ["a1"],
+          "dénouement roman vipère": ["a1"],
           [SHORT_WORDING]: ["a1", "a2"],
         },
       },
@@ -435,8 +493,82 @@ describe("the union of what came back", () => {
   });
 });
 
+describe("the wording a row came back under", () => {
+  it("travels on the row itself, rather than only in the trace of what was sent", async () => {
+    const log: string[] = [];
+    const client = scriptedClient({ inside: { [SHORT_WORDING]: ["vipereaupoing1948"] } }, {}, log);
+
+    const payload = payloadOf<{
+      hits: Array<{ id: string; found_by_query: string; found_by_derivation: string }>;
+    }>(await runSearchInside(client, insideArgs({ query: LONG_QUESTION, limit: 3 })));
+
+    const row = payload.hits.find((hit) => hit.id === "archive:vipereaupoing1948");
+    expect(row?.found_by_query).toBe(SHORT_WORDING);
+    expect(row?.found_by_derivation.length ?? 0).toBeGreaterThan(10);
+  });
+
+  it("names the words as asked on a row the words as asked returned", async () => {
+    const log: string[] = [];
+    const client = scriptedClient({ items: { cormorant: ["cormorant1871"] } }, {}, log);
+
+    const payload = payloadOf<{ items: Array<{ id: string; found_by_query: string }> }>(
+      await runSearchItems(client, itemArgs({ query: "cormorant", limit: 3 })),
+    );
+
+    expect(payload.items[0]?.found_by_query).toBe("cormorant");
+  });
+
+  it("marks a derived wording in the block a client renders", async () => {
+    const log: string[] = [];
+    const client = scriptedClient({ inside: { [SHORT_WORDING]: ["vipereaupoing1948"] } }, {}, log);
+
+    const text = textOf(
+      await runSearchInside(client, insideArgs({ query: LONG_QUESTION, limit: 3 })),
+    );
+    expect(text).toMatch(new RegExp(`found under[^\\n]*${SHORT_WORDING}`, "i"));
+  });
+});
+
+describe("a count an archive reported for one wording", () => {
+  it("is not served as a count of rows another wording found", async () => {
+    const log: string[] = [];
+    const client = scriptedClient({ inside: { [SHORT_WORDING]: ["a1", "a2"] } }, {}, log);
+
+    const payload = payloadOf<{
+      per_source: Array<{
+        source: string;
+        count: number;
+        reported_total: number | null;
+        reported_total_means: string | null;
+        more_on_this_archive: boolean | null;
+      }>;
+      notes: string[];
+    }>(await runSearchInside(client, insideArgs({ query: LONG_QUESTION, limit: 5 })));
+
+    const report = payload.per_source.find((entry) => entry.source === "archive")!;
+    expect(report.count).toBe(2);
+    expect(report.reported_total).toBe(0);
+    // The number counts one wording. Rows from another are not what it counted.
+    expect(report.reported_total_means).toContain(LONG_QUESTION);
+    expect(report.more_on_this_archive).toBeNull();
+  });
+
+  it("says so in the block a client renders", async () => {
+    const log: string[] = [];
+    const client = scriptedClient({ inside: { [SHORT_WORDING]: ["a1", "a2"] } }, {}, log);
+
+    const text = textOf(
+      await runSearchInside(client, insideArgs({ query: LONG_QUESTION, limit: 5 })),
+    );
+    const line = text.split("\n").find((entry) => entry.includes("reported 0"));
+
+    expect(line, text).toBeDefined();
+    expect(line).toMatch(/wording/i);
+  });
+});
+
 describe("the catalogue", () => {
-  it("derives wordings there too, because that index is conjunctive as well", async () => {
+  it("derives wordings there too, because a name is filed under more than one spelling", async () => {
     const log: string[] = [];
     const client = scriptedClient({ items: { Kamasutra: ["kamasutra1883"] } }, {}, log);
 

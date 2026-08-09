@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from "vitest";
 import { BooksClient } from "../../src/sources/client.js";
-import { MAX_TEXT_CHARS, ok } from "../../src/tools/shared.js";
+import { MAX_BLOCK_CHARS, ok } from "../../src/tools/shared.js";
 import { runGetItem } from "../../src/tools/getItem.js";
 import { runSearchInside } from "../../src/tools/searchInside.js";
 import { runSearchItems } from "../../src/tools/searchItems.js";
@@ -19,6 +19,7 @@ import {
   FakeSourceError,
   archiveItemRows,
   fakeArchive,
+  fakeBnf,
   fakeClient,
   fakeLoc,
   insideArgs,
@@ -135,6 +136,82 @@ describe("when nothing answered at all", () => {
   });
 });
 
+describe("an answer holding no row because no row could be read", () => {
+  it("never calls a decoding failure an absence, nor blames the wording for it", async () => {
+    const payload = payloadOf<Reports>(
+      await runSearchItems(
+        fakeClient({
+          // Rows the archive did send, in a shape this server cannot read.
+          archive: { rows: [{ title: "a row with no identifier" }] as typeof archiveItemRows },
+          loc: { rows: [] },
+          bnf: { rows: [] },
+        }),
+        itemArgs(),
+      ),
+    );
+    const notes = payload.notes.join(" ");
+
+    expect(reportFor(payload, "archive").skipped).toBeGreaterThan(0);
+    expect(notes).not.toMatch(/none holds anything under this wording/);
+    expect(notes).not.toMatch(/Try fewer words/);
+    expect(notes).toMatch(/could not read/);
+  });
+
+  it("still says every archive holds nothing when every archive read cleanly", async () => {
+    const payload = payloadOf<Reports>(
+      await runSearchItems(
+        fakeClient({
+          archive: { rows: [], itemTotal: 0 },
+          loc: { rows: [], itemTotal: 0 },
+          bnf: { rows: [] },
+        }),
+        itemArgs(),
+      ),
+    );
+    expect(payload.notes.join(" ")).toMatch(/none holds anything under this wording/);
+  });
+});
+
+describe("a page past the last one an archive filled", () => {
+  it("blames the page rather than the words, on the catalogue", async () => {
+    const payload = payloadOf<Reports>(
+      await runSearchItems(
+        fakeClient({ archive: { rows: [] }, loc: { rows: [] }, bnf: { rows: [] } }),
+        itemArgs({ page: 40 }),
+      ),
+    );
+    const notes = payload.notes.join(" ");
+
+    expect(notes).not.toMatch(/none holds anything under this wording/);
+    expect(notes).not.toMatch(/statement about the wording/);
+    expect(notes).toMatch(/page 40/);
+  });
+
+  it("blames the page rather than the words, on the scanned text", async () => {
+    const payload = payloadOf<Reports>(
+      await runSearchInside(
+        fakeClient({ archive: { insideHits: [] }, loc: { insideHits: [] } }),
+        insideArgs({ page: 40 }),
+      ),
+    );
+    const notes = payload.notes.join(" ");
+
+    expect(notes).not.toMatch(/statement about the wording/);
+    expect(notes).toMatch(/page 40/);
+  });
+
+  it("still blames the words on the first page, where the page is not the reason", async () => {
+    const payload = payloadOf<Reports>(
+      await runSearchItems(
+        fakeClient({ archive: { rows: [] }, loc: { rows: [] }, bnf: { rows: [] } }),
+        itemArgs({ page: 1 }),
+      ),
+    );
+
+    expect(payload.notes.join(" ")).toMatch(/wording/);
+  });
+});
+
 describe("an archive that answered and holds nothing", () => {
   it("is told apart from one that failed", async () => {
     const payload = payloadOf<Reports>(
@@ -183,7 +260,7 @@ describe("a row an archive sent in a shape this server cannot read", () => {
     };
     const client = new BooksClient({
       logger: silentLogger,
-      readers: { archive: broken, loc: fakeLoc() },
+      readers: { archive: broken, loc: fakeLoc(), bnf: fakeBnf() },
     });
 
     const payload = payloadOf<Reports>(await runSearchItems(client, itemArgs()));
@@ -202,7 +279,7 @@ describe("a record an archive sent in a shape this server cannot read", () => {
     };
     const client = new BooksClient({
       logger: silentLogger,
-      readers: { archive: broken, loc: fakeLoc() },
+      readers: { archive: broken, loc: fakeLoc(), bnf: fakeBnf() },
     });
 
     await expect(client.getItem("archive:x")).rejects.toMatchObject({ code: "parse_failure" });
@@ -217,10 +294,44 @@ describe("a record an archive sent in a shape this server cannot read", () => {
     };
     const client = new BooksClient({
       logger: silentLogger,
-      readers: { archive: broken, loc: fakeLoc() },
+      readers: { archive: broken, loc: fakeLoc(), bnf: fakeBnf() },
     });
 
     await expect(client.getItem("archive:x")).rejects.toThrow(/sourceUrl/i);
+  });
+});
+
+describe("a record an archive answered about and served no whole record for", () => {
+  const partial = () => ({
+    ...fakeArchive(),
+    async getItem() {
+      return { data: { identifier: "x" } as never, cached: false };
+    },
+  });
+  const client = () =>
+    new BooksClient({
+      logger: silentLogger,
+      readers: { archive: partial(), loc: fakeLoc(), bnf: fakeBnf() },
+    });
+
+  it("is not handed to the caller as a defect to open a bug report about", async () => {
+    // An archive answers about identifiers it serves no record of its own for,
+    // and a search hands those identifiers out. Reading one is a question that
+    // was answered, not a server that broke.
+    const result = await runGetItem(client(), recordArgs({ identifier: "archive:x" }));
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).not.toMatch(/report this at/i);
+  });
+
+  it("says the archive answered and served no whole record at that identifier", async () => {
+    const result = await runGetItem(client(), recordArgs({ identifier: "archive:x" }));
+    expect(textOf(result)).toMatch(/served no whole record/);
+  });
+
+  it("sends the caller to the address the row carries", async () => {
+    const result = await runGetItem(client(), recordArgs({ identifier: "archive:x" }));
+    expect(textOf(result)).toMatch(/source_url/);
   });
 });
 
@@ -234,7 +345,7 @@ describe("an archive that never answers", () => {
     const client = new BooksClient({
       logger: silentLogger,
       config: { timeoutMs: 1000, maxRetries: 0 },
-      readers: { archive: stalled, loc: fakeLoc() },
+      readers: { archive: stalled, loc: fakeLoc(), bnf: fakeBnf() },
     });
 
     const merged = await client.searchInside("wet fog", {
@@ -254,7 +365,7 @@ describe("a configuration object handed to the published client", () => {
   it("cannot turn the deadline off", () => {
     const client = new BooksClient({
       config: { timeoutMs: 0 },
-      readers: { archive: fakeArchive(), loc: fakeLoc() },
+      readers: { archive: fakeArchive(), loc: fakeLoc(), bnf: fakeBnf() },
     });
     expect(client.timeoutMs).toBeGreaterThan(0);
   });
@@ -262,7 +373,7 @@ describe("a configuration object handed to the published client", () => {
   it("cannot ask for a retry storm", () => {
     const client = new BooksClient({
       config: { maxRetries: 100_000 },
-      readers: { archive: fakeArchive(), loc: fakeLoc() },
+      readers: { archive: fakeArchive(), loc: fakeLoc(), bnf: fakeBnf() },
     });
     expect(client.maxRetries).toBeLessThanOrEqual(8);
   });
@@ -270,7 +381,7 @@ describe("a configuration object handed to the published client", () => {
   it("cannot take an archive below the spacing that archive is owed", () => {
     const client = new BooksClient({
       config: { minIntervalMs: 1 },
-      readers: { archive: fakeArchive(), loc: fakeLoc() },
+      readers: { archive: fakeArchive(), loc: fakeLoc(), bnf: fakeBnf() },
     });
     const loc = client.pacing.find((entry) => entry.id === "loc")!;
     expect(loc.intervalMs).toBe(6000);
@@ -279,7 +390,7 @@ describe("a configuration object handed to the published client", () => {
   it("can widen the spacing of every archive at once", () => {
     const client = new BooksClient({
       config: { minIntervalMs: 9000 },
-      readers: { archive: fakeArchive(), loc: fakeLoc() },
+      readers: { archive: fakeArchive(), loc: fakeLoc(), bnf: fakeBnf() },
     });
     for (const entry of client.pacing) expect(entry.intervalMs).toBe(9000);
   });
@@ -287,7 +398,7 @@ describe("a configuration object handed to the published client", () => {
   it("keeps the project's own identifier in a User-Agent a caller replaced", () => {
     const client = new BooksClient({
       config: { userAgent: "somebody-else/1.0" },
-      readers: { archive: fakeArchive(), loc: fakeLoc() },
+      readers: { archive: fakeArchive(), loc: fakeLoc(), bnf: fakeBnf() },
     });
     expect(client.userAgent).toContain("mcp-books/");
     expect(client.userAgent).toContain("somebody-else/1.0");
@@ -302,7 +413,7 @@ describe("an answer that has more to say than it has room for", () => {
     ];
     const text = textOf(ok({}, "the answer", { notes }));
     expect(text).toContain("its search did not answer");
-    expect(text.length).toBeLessThanOrEqual(MAX_TEXT_CHARS + 200);
+    expect(text.length).toBeLessThanOrEqual(MAX_BLOCK_CHARS);
   });
 
   it("keeps the note about openings of pages", () => {

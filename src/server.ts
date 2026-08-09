@@ -101,7 +101,32 @@ export function buildInstructions(
         .map((profile) => `${profile.name} on ${profile.searchesOn}`)
         .join(
           "; ",
-        )}. The same query is therefore a different question in each, an archive reading titles alone answers a person's name with the books about that person, and per_source says which fields each one read.`,
+        )}. The same query is therefore a different question in each, and per_source says which fields each one read.`,
+    );
+  }
+
+  // What follows from a narrow index is written per archive, so it is named
+  // with the archive it is true of rather than as a general caution.
+  for (const profile of searchFields) {
+    if (!profile.searchesOnCaveat) continue;
+    lines.push(`${profile.name} ${profile.searchesOnCaveat}`);
+  }
+
+  // Whether an index narrows on the words or scores them decides what an empty
+  // answer and a surprising row each mean, and the archives differ.
+  const strict = searchFields.filter((profile) => profile.catalogueRequiresEveryWord);
+  const scoring = searchFields.filter((profile) => !profile.catalogueRequiresEveryWord);
+  if (strict.length > 0 && scoring.length > 0) {
+    lines.push(
+      `The archives do not read a query the same way. ${strict
+        .map((profile) => profile.name)
+        .join(
+          " and ",
+        )} answer${strict.length === 1 ? "s" : ""} only where every word given appears, so a question written as a sentence comes back empty there. ${scoring
+        .map((profile) => profile.name)
+        .join(
+          " and ",
+        )} score${scoring.length === 1 ? "s" : ""} the words instead and answer${scoring.length === 1 ? "s" : ""} with what ${scoring.length === 1 ? "it ranks" : "they rank"} highest, so a row from ${scoring.length === 1 ? "it" : "them"} can carry only some of the words. Both searches derive further wordings from a query for that reason, per_source says which archive is which, and every row names the wording that returned it.`,
     );
   }
 

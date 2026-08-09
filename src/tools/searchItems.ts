@@ -12,10 +12,12 @@ import { z } from "zod";
 import { MEDIA_TYPES, SORT_KEYS, SOURCE_IDS, SOURCE_PROFILES } from "../sources/client.js";
 import type { BooksClient, SortKey } from "../sources/client.js";
 import type { SourceId } from "../types.js";
+import type { SourceProfile } from "../types.js";
 import { strictInput } from "./arguments.js";
-import { contextFor } from "./searchInside.js";
 import {
   creditLine,
+  nonWordCharacters,
+  nonWordCharactersNote,
   ok,
   queryNotes,
   quoteForeign,
@@ -37,6 +39,26 @@ const SOURCE_VALUES = SOURCE_IDS as unknown as [string, ...string[]];
 const DATE_SORTS: ReadonlySet<SortKey> = new Set<SortKey>(["oldest", "newest"]);
 
 /**
+ * What a catalogue answer says about the archive that gave it.
+ *
+ * A profile describes an archive's catalogue and its full-text index both, and
+ * only the catalogue was read here: the fields the words were matched against,
+ * what one of its rows is, whether every word given had to appear, and what a
+ * year on those rows was measured on. An archive that was never asked has
+ * nothing attached, since what it reads when asked is no part of this answer.
+ */
+function catalogueContext(profile: SourceProfile | undefined, asked: boolean) {
+  return profile && asked
+    ? {
+        yearMeans: profile.yearMeans,
+        searchesOn: profile.searchesOn,
+        rowDescribes: profile.rowDescribes,
+        requiresEveryWord: profile.catalogueRequiresEveryWord,
+      }
+    : {};
+}
+
+/**
  * Which archive files material under which name, spelled out for a caller.
  *
  * Learning it from a failed call costs a round trip and several seconds of
@@ -55,7 +77,9 @@ export const searchItemsDescription = [
   "Rows are interleaved one archive at a time. No score orders them against each other, and 'sort' is applied inside each archive rather than across them: a year is the date of an edition in one place and the date on a catalogue record in another, so there is no date order that spans the answer.",
   "'oldest' and 'newest' order on a date field carrying a year and no era, so a date before the common era is filed there as a year of this one, and a record stating no date is placed by a stand-in rather than by its age. The first row of a date order is therefore not established as the oldest or newest thing an archive holds, the notes count the rows carrying no year, and this server orders nothing itself.",
   "Every count in 'per_source' is that archive's own and counts something of its own. They are never added together, and there is no total across archives.",
-  "A catalogue index requires every word given to appear, and a name is filed under more than one spelling, so further wordings are derived from the query and asked for their union. It costs nothing extra when the words as asked already answer. Every wording sent is named in 'per_source' with what it returned, and 'fan_out' turns the derivation off.",
+  "The catalogues read the words given in different ways, and 'per_source' says which each one does. One answers only where every word appears, so a question written as a sentence comes back empty; another scores the words and answers with the records it ranks highest, so a row of its can carry only some of them. Either way it is the words: a character that is neither a letter nor a digit is no word to an index, and 'non_word_characters' lists any the query carried.",
+  "A name is also filed under more than one spelling, so further wordings are derived from the query and asked for their union. It costs nothing extra when the words as asked already answer. Every wording sent is named in 'per_source' with what it returned, every row carries the wording that returned it in 'found_by_query', and 'fan_out' turns the derivation off.",
+  "A row's 'media_type' is the word that record carries for the kind of thing, which is often none of the names this argument takes: those are the divisions of a catalogue, and 'media_types' publishes them per archive.",
   "A row states no terms of reuse. Read the record with get_item for what that record itself says, and read silence as silence.",
   "Use search_inside for a phrase printed on a page: this tool reads catalogue records and knows nothing of what a book says, so a sentence given here matches only where a catalogue happens to carry it.",
   "Answers take several seconds, because one of the archives publishes a request ceiling this server keeps to.",
@@ -75,14 +99,18 @@ export const searchItemsInput = strictInput({
     .min(1000)
     .max(2100)
     .optional()
-    .describe("Earliest year, in each archive's own reading of what a year is."),
+    .describe(
+      "Earliest year, in each archive's own reading of what a year is. Given with 'year_to', it must not be the later of the two: a range running backwards names no year and is refused rather than read differently by each archive.",
+    ),
   year_to: z
     .number()
     .int()
     .min(1000)
     .max(2100)
     .optional()
-    .describe("Latest year, in each archive's own reading of what a year is."),
+    .describe(
+      "Latest year, in each archive's own reading of what a year is. It cannot be earlier than 'year_from'.",
+    ),
   sort: z
     .enum(SORT_VALUES)
     .default("relevance")
@@ -107,7 +135,7 @@ export const searchItemsInput = strictInput({
     .boolean()
     .default(true)
     .describe(
-      "Whether to derive further wordings from the query and ask each archive for the union of what they return. A catalogue index requires every word given to appear, and a spelling of a name is not the only one a catalogue files it under. An archive is asked a derived wording only when the words as asked did not return as many rows as 'limit', so a query that works costs one request. Set false to send exactly the words given. 'per_source' names every wording, sent or not.",
+      "Whether to derive further wordings from the query and ask each archive for the union of what they return. A question written as a sentence returns nothing where every word given has to appear, and the records an index scores highest where it does not, and a spelling of a name is not the only one a catalogue files it under. An archive is asked a derived wording only when the words as asked did not return as many rows as 'limit', so a query that works costs one request. Set false to send exactly the words given. 'per_source' names every wording, sent or not, and each row names the one that returned it.",
     ),
   sources: z
     .array(z.enum(SOURCE_VALUES))
@@ -141,11 +169,20 @@ export const searchItemsOutput = z.object({
           .string()
           .nullable()
           .describe("The name this archive was asked under. Null where it searches every kind."),
-        vocabulary: z.array(z.string()).describe("Every name this archive files material under."),
+        vocabulary: z
+          .array(z.string())
+          .describe(
+            "Every name this archive takes as the 'media_type' argument, which is how its catalogue is divided. The 'media_type' on a row is the word that record carries, and is often none of these.",
+          ),
       }),
     )
     .describe(
       "Which name each archive was asked under, published rather than reconciled, so a caller can map the vocabularies once and read what was actually searched.",
+    ),
+  non_word_characters: z
+    .array(z.string())
+    .describe(
+      "Characters in the query that are neither letters nor digits. These catalogues answer on words, so a row here can carry none of them, and 'requires_every_word' covers the words that were given rather than these.",
     ),
   order: z.string().describe("How the list was built, in words."),
   notes: z.array(z.string()),
@@ -174,7 +211,7 @@ export async function runSearchItems(
     );
 
     const items = merged.rows.map(toRowPayload);
-    const notes = [...queryNotes(merged.reports), ...reportNotes(merged.reports)];
+    const notes = [...queryNotes(merged.reports), ...reportNotes(merged.reports, args.page)];
 
     const answered = merged.reports.filter((report) => report.status === "answered");
     const contributed = merged.reports.filter((report) => report.count > 0);
@@ -282,8 +319,49 @@ export async function runSearchItems(
           .map((entry) => `${entry.name} on ${entry.on}`)
           .join("; ")}.`,
       );
+    }
+
+    // What follows from a narrow index is said whenever that archive answered,
+    // and not only where another archive stood beside it to make the contrast
+    // visible. An answer built entirely from such an index is the one where a
+    // reader is least able to see what was and was not searched.
+    for (const report of answered) {
+      const caveat = profiles.get(report.source)?.searchesOnCaveat;
+      if (caveat) notes.push(`${report.name} ${caveat}`);
+    }
+
+    // A catalogue that scores the words rather than requiring them all answers
+    // a long query with the records it ranks highest, so a row can carry some
+    // of the words and none of the rest.
+    for (const report of contributed) {
+      if (profiles.get(report.source)?.catalogueRequiresEveryWord !== false) continue;
       notes.push(
-        "An archive reading titles alone was asked a narrower question than one reading a whole record, so a person's name put to it comes back as the books about that person rather than the books by them.",
+        `${report.name} does not require every word given to appear: it scores them and answers with the records it ranks highest, so a row of its here can carry only some of them.`,
+      );
+    }
+
+    // A catalogue that does require every word given requires every word, and
+    // a character that is no word to it falls outside that promise.
+    const outsideTheWords = nonWordCharacters(args.query);
+    const outsideNote = nonWordCharactersNote(outsideTheWords);
+    if (outsideNote) notes.push(outsideNote);
+
+    // The word a record carries for the kind of thing and the names this
+    // argument takes are two vocabularies. A caller holding one answer sees
+    // both, and reads the first as though it belonged to the second.
+    for (const report of contributed) {
+      const vocabulary = profiles.get(report.source)?.mediaTypes ?? [];
+      const carried = [
+        ...new Set(
+          items
+            .filter((row) => row.source === report.source && row.media_type !== null)
+            .map((row) => row.media_type!)
+            .filter((word) => !vocabulary.includes(word)),
+        ),
+      ];
+      if (carried.length === 0) continue;
+      notes.push(
+        `${report.name} answered with rows whose own word for the kind of thing is not one of the names media_type takes: ${carried.map((word) => `"${quoteForeign(word)}"`).join(", ")}. A row carries the word its record carries, and 'media_types' lists the names this archive's catalogue is divided under.`,
       );
     }
 
@@ -301,8 +379,32 @@ export async function runSearchItems(
     }
 
     if (items.length === 0 && answered.length === merged.reports.length && answered.length > 0) {
-      notes.push(
-        "Every archive answered and none holds anything under this wording. Try fewer words, a creator's name, or a different kind of material.",
+      // An archive that dropped rows it could not read, or that counted matches
+      // it then described in a shape this server could not decode, has not said
+      // its catalogue holds nothing. Calling that an absence reports a failure
+      // of this server as a fact about a corpus, and pointing the caller at
+      // their own wording sends them to rewrite a question that was answered.
+      const contradicted = answered.flatMap((report) =>
+        report.skipped > 0
+          ? [`${report.name} sent ${report.skipped} row(s) this server could not read`]
+          : (report.reportedTotal ?? 0) > 0
+            ? [`${report.name} counted ${report.reportedTotal} match(es) and returned none of them`]
+            : [],
+      );
+
+      // An empty page beyond the first is where the rows stop, which is a fact
+      // about how far the list runs. Reading it as an empty catalogue would
+      // send a caller to rewrite a query that answered on page one.
+      //
+      // It opens the notes rather than closing them: on an answer holding no
+      // rows this sentence is the answer, and a block with room for only some
+      // of its notes drops from the end.
+      notes.unshift(
+        args.page > 1
+          ? `Every archive answered and none returned a row on page ${args.page}. Their rows stop before it, so this says nothing about the wording: read an earlier page for what they did return.`
+          : contradicted.length > 0
+            ? `Every archive answered and no row reached this list, which is not the same as none holding anything: ${contradicted.join("; ")}. Nothing here is evidence about what they hold, and the wording is not what to change.`
+            : "Every archive answered and none holds anything under this wording. Try fewer words, a creator's name, or a different kind of material.",
       );
     }
 
@@ -338,10 +440,14 @@ export async function runSearchItems(
         items,
         item_count: items.length,
         per_source: merged.reports.map((report) =>
-          toReportPayload(report, contextFor(profiles.get(report.source))),
+          toReportPayload(
+            report,
+            catalogueContext(profiles.get(report.source), report.status !== "absent"),
+          ),
         ),
         queries_run: queriesRun,
         media_types: mediaTypes,
+        non_word_characters: outsideTheWords,
         order,
         notes,
       },
@@ -380,10 +486,16 @@ function renderRows(
     ]
       .filter(Boolean)
       .join(" ");
+    // A row a derived wording returned answers that wording's words rather than
+    // the question as written, and the head of the block names the question.
+    const under =
+      row.found_by_query !== null && row.found_by_query !== query
+        ? `\n   found under: ${quoteForeign(row.found_by_query)}`
+        : "";
     // The address goes on its own line: a client that renders only text has
     // nothing else to cite from, and a model with an identifier and no link
     // will build one.
-    return `${head}\n   id: ${quoteForeign(row.id)}\n   ${quoteForeign(row.source_url)}`;
+    return `${head}${under}\n   id: ${quoteForeign(row.id)}\n   ${quoteForeign(row.source_url)}`;
   });
 
   // Whole rows are dropped rather than the block being cut where the room runs

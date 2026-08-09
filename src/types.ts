@@ -72,6 +72,34 @@ export interface SourceProfile {
    */
   searchesOn: string;
   /**
+   * What follows from those fields for a caller, written as a clause that
+   * completes this archive's name. Null where nothing follows.
+   *
+   * The fields alone are a technical statement, and the consequence of reading
+   * a narrow set of them is what a caller acts on. It is written per archive
+   * because it depends on what that index reads, and it is said whenever the
+   * archive answered, including when it is the only archive that did: an answer
+   * built entirely from such an index is where the caveat matters most.
+   */
+  searchesOnCaveat: string | null;
+  /**
+   * Whether this archive's catalogue index answers only where every word given
+   * appears.
+   *
+   * An index that does returns nothing for a question written as a sentence,
+   * which is why further wordings are derived from a query. An index that does
+   * not ranks the words instead and answers with the rows it scores highest, so
+   * one of its rows can carry only some of the words given. The two are
+   * different promises about a row, and one sentence covering both would be
+   * false of one of them.
+   */
+  catalogueRequiresEveryWord: boolean;
+  /**
+   * The same, for the full-text index behind `search_inside`. Null on an
+   * archive that has no such index.
+   */
+  insideRequiresEveryWord: boolean | null;
+  /**
    * What one row of this archive's catalogue is, in words.
    *
    * An archive of scans files a copy it holds; a national catalogue files a
@@ -88,6 +116,17 @@ export interface SourceProfile {
   insideCorpus: string | null;
   /** What a `year` on this archive's rows was measured on, in words. */
   yearMeans: string;
+  /**
+   * What the field this server reads a record's description out of holds, in
+   * words. Null on an archive no description is read from.
+   *
+   * A catalogue files what it likes under that name. One record carries an
+   * account of the thing and the next carries the place it was published, the
+   * extent of the volume or a note a cataloguer left, and all of them arrive
+   * here as the record's prose. What the field is has to travel with what it
+   * holds, or a reader takes a line of bibliographic apparatus for a summary.
+   */
+  descriptionMeans: string | null;
   /**
    * Whether the full-text index behind `search_inside` carries a page number.
    * Where it does not, `pageNumber` is null on every match, and that null is
@@ -115,8 +154,25 @@ export interface SourceProfile {
   paceReason: string;
 }
 
+/**
+ * The wording a row came back under.
+ *
+ * A question reaches an archive in more than one wording, and which of them
+ * returned a row is what tells a reader how much of the question that row
+ * answers: a row found under a reduction answers the words the reduction kept
+ * and says nothing about the rest. Carrying it on the row puts that beside the
+ * row itself rather than in a trace a reader has to go and reconcile.
+ *
+ * Filled by the layer that sends the wordings, since an archive is asked one
+ * wording at a time and knows nothing of the others.
+ */
+export interface FoundBy {
+  foundByQuery?: string;
+  foundByDerivation?: string;
+}
+
 /** One match inside machine-read text. */
-export interface Hit {
+export interface Hit extends FoundBy {
   /** Carries the archive, and the string get_item takes back. */
   id: string;
   source: SourceId;
@@ -148,7 +204,7 @@ export interface Hit {
 }
 
 /** One catalogue row. */
-export interface ItemRow {
+export interface ItemRow extends FoundBy {
   id: string;
   source: SourceId;
   sourceName: string;
@@ -232,10 +288,10 @@ export interface ItemDetail {
   /** Copies this server read off the record, before any ceiling a caller set. */
   copiesAvailable: number;
   /**
-   * Entries the archive lists that are its own bookkeeping or the by-products
-   * of its own processing rather than copies of the thing. Named so a reader
-   * comparing this count against the archive's own page knows what was set
-   * aside.
+   * Entries the archive lists against the record that are not copies of the
+   * thing: its own bookkeeping, the by-products of its own processing, or an
+   * image it attaches to illustrate the record. Named so a reader comparing
+   * this count against the archive's own page knows what was set aside.
    */
   generatedEntries: number;
   /** Collections, divisions and shelves the record sits in. */
@@ -306,11 +362,14 @@ export interface SourceReport {
   /** What `reportedTotal` counts on this archive, in words. */
   reportedTotalMeans: string | null;
   /**
-   * Rows the archive sent that could not be read, and were left out. Null on an
-   * answer served from a cache that kept the rows and not the count of what was
-   * dropped building them, where a zero would be a figure nobody established.
+   * Rows the archive sent that could not be read, and were left out.
+   *
+   * Always a count, so a caller reads it the same way on every answer. Rows
+   * kept in a cache were counted the same way when they were first read, and
+   * `cached` says where a count could be short of a drop nobody kept a record
+   * of.
    */
-  skipped: number | null;
+  skipped: number;
   /** The order this archive returned its own rows in, in words. */
   orderedOn: string | null;
   /** The name this archive was asked with, in its own vocabulary. */

@@ -106,10 +106,12 @@ placed by nothing, and keeps quiet about an order it did not perform.
 
 ### One question, several wordings
 
-The indexes behind these archives are conjunctive: every word given has to
-appear in the same document. A question written as a sentence therefore comes
-back empty on a work the archives hold several copies of, and that emptiness
-reads as an archive holding nothing.
+The archives do not read a query the same way, and `per_source` says which each
+one does. An index that answers only where every word given appears comes back
+empty on a question written as a sentence, even for a work it holds several
+copies of, and that emptiness reads as an archive holding nothing. An index that
+scores the words instead answers the same question with whatever it ranks
+highest, so a row of its can carry only some of the words given.
 
 Both searches answer it by deriving further wordings from the query and asking
 each archive for the **union** of what they return. The derivations are made
@@ -119,15 +121,22 @@ every wording sent is one a reader can retype:
 - the words as asked, always first;
 - a quoted phrase without its quotation marks, which an index requiring those
   words adjacent can then match apart;
-- the leading words of a long question, because every word given has to appear
-  and the words naming the thing are written before the words framing it;
+- the words a question writes with a capital letter inside the sentence, kept in
+  the order they were written and with a run of them kept whole: a capital there
+  is the writing's own mark on a name, a name is what a catalogue files a record
+  under, and reading the mark needs no lexicon and no list of words to ignore;
+- failing any such mark, the longest words of a long question, which is all the
+  letters can say once nothing in the question names anything;
 - the same words with their diacritics removed, and two words run together,
   because a name is filed under more than one spelling.
 
-Two derivations are deliberately not made. A run-together word is never split
+Three derivations are deliberately not made. A run-together word is never split
 into two, and diacritics are never added to a word written without them: where
 the cut falls and which letter takes an accent are facts about a language, and
-guessing at either would send an archive a word nobody wrote.
+guessing at either would send an archive a word nobody wrote. A mark is removed
+only from a script that writes a letter and its ornament apart, since a script
+where the two are one letter of the alphabet spells a different word without it,
+and no catalogue files that one either.
 
 What it costs is bounded. Each archive is asked at most **three** queries, one
 after another so its own pacing is kept, and it is asked a derived wording only
@@ -212,11 +221,17 @@ the one that justifies asking several archives at once.
 A match carries `identifier`, `title`, `creator`, `year`, `excerpts`,
 `excerpt_kind`, `source_url` and `page_number`. It also carries `matched_file`
 and `inside_container` where a record bundles several documents, and
-`published_on` and `publication` where the corpus is dated by issue.
+`published_on` and `publication` where the corpus is dated by issue. Every match
+carries `found_by_query`: the wording that returned it, which is the query as
+written unless a further wording was derived, in which case the match answers
+that wording's words and not the rest of the question.
 
 `per_source` reports what each archive answered, what its own number counts, what
-its corpus is, whether its index holds a leaf number, and what a year means on
-it.
+its corpus is, whether its index holds a leaf number, whether it answers only
+where every word given appears, and what a year means on it. What it says is
+what this tool asked: the fields a catalogue matches against belong to the
+catalogue search and are not reported here, and an archive that was not asked
+carries none of it.
 
 ### `search_items`
 
@@ -250,8 +265,14 @@ Naming no kind of material leaves the Internet Archive searching every kind and
 asks the Library for `books`, because it keeps one catalogue per kind and a
 search has to name one. The answer says so.
 
-`per_source` also carries `searches_on`, `row_describes` and `filters_dropped`,
-which are what a caller reads before comparing two rows or trusting a filter.
+A row carries `found_by_query` as well, naming the wording it came back under.
+
+`per_source` also carries `searches_on`, `row_describes`, `requires_every_word`
+and `filters_dropped`, which are what a caller reads before comparing two rows or
+trusting a filter. A year range whose earliest bound is later than its latest
+names no year: it is refused rather than sent, because one archive answers such a
+pair with nothing and another answers as though no range had been given, and
+neither is the range having been applied.
 
 ### `get_item`
 
@@ -581,10 +602,13 @@ ordre qu'elle n'a pas effectué.
 
 ### Une question, plusieurs formulations
 
-Les index derrière ces archives sont conjonctifs : chaque mot donné doit
-apparaître dans le même document. Une question écrite comme une phrase revient
-donc vide sur une œuvre dont les archives détiennent plusieurs exemplaires, et ce
-vide se lit comme une archive qui ne détient rien.
+Les archives ne lisent pas une requête de la même façon, et `per_source` dit
+laquelle fait quoi. Un index qui ne répond que là où chaque mot donné apparaît
+revient vide sur une question écrite comme une phrase, même pour une œuvre dont
+il détient plusieurs exemplaires, et ce vide se lit comme une archive qui ne
+détient rien. Un index qui pondère les mots répond à la même question par ce
+qu'il classe en tête, et l'une de ses lignes peut ne porter qu'une partie des
+mots donnés.
 
 Les deux recherches y répondent en dérivant d'autres formulations de la requête
 et en demandant à chaque archive l'**union** de ce qu'elles rendent. Les
@@ -595,16 +619,24 @@ lecteur peut retaper.
 - les mots tels quels, toujours en premier ;
 - une phrase entre guillemets sans ses guillemets, qu'un index exigeant ces mots
   contigus peut alors trouver séparés ;
-- les premiers mots d'une longue question, puisque chaque mot donné doit
-  apparaître et que les mots qui nomment la chose précèdent ceux qui posent la
-  question ;
+- les mots qu'une question écrit avec une majuscule à l'intérieur de la phrase,
+  dans l'ordre où ils ont été écrits et sans jamais couper une suite de ces
+  mots : une majuscule y est la marque que l'écriture pose sur un nom, un nom
+  est ce sous quoi un catalogue classe une notice, et lire cette marque ne
+  demande ni lexique ni liste de mots à ignorer ;
+- à défaut d'une telle marque, les mots les plus longs d'une longue question,
+  qui est tout ce que les lettres peuvent dire quand rien dans la question ne
+  nomme quoi que ce soit ;
 - les mêmes mots sans leurs diacritiques, et deux mots accolés, parce qu'un nom
   est classé sous plusieurs graphies.
 
-Deux dérivations sont délibérément écartées. Un mot accolé n'est jamais coupé en
+Trois dérivations sont délibérément écartées. Un mot accolé n'est jamais coupé en
 deux, et aucun diacritique n'est ajouté à un mot écrit sans : l'endroit de la
 coupe et la lettre qui prend l'accent relèvent d'une langue, et les deviner
-enverrait à une archive un mot que personne n'a écrit.
+enverrait à une archive un mot que personne n'a écrit. Une marque n'est retirée
+que dans une écriture qui note la lettre et son ornement séparément, car une
+écriture où les deux forment une seule lettre de l'alphabet en écrirait un autre
+mot, que personne ne classe davantage.
 
 Le coût est borné. Chaque archive reçoit au plus **trois** requêtes, l'une après
 l'autre pour que sa cadence soit tenue, et elle ne reçoit une formulation dérivée
@@ -678,9 +710,17 @@ ne répond, et celle qui justifie d'interroger plusieurs archives à la fois.
 | `fan_out`                | booléen, défaut vrai              | Dériver d'autres formulations et demander leur union           |
 | `sources`                | tableau d'identifiants, optionnel | Absent, toutes celles qui détiennent du texte sont interrogées |
 
+Chaque correspondance porte `found_by_query` : la formulation qui l'a rendue,
+c'est-à-dire la requête telle qu'écrite, sauf si une autre formulation a été
+dérivée, auquel cas la correspondance répond aux mots de cette formulation et non
+au reste de la question.
+
 `per_source` rapporte ce qu'a répondu chaque archive, ce que compte son propre
-nombre, quel est son corpus, si son index porte un numéro de feuille, et ce que
-vaut une année chez elle.
+nombre, quel est son corpus, si son index porte un numéro de feuille, s'il ne
+répond que là où chaque mot donné apparaît, et ce que vaut une année chez elle.
+Ce qui y figure est ce que cet outil a demandé : les champs sur lesquels un
+catalogue cherche appartiennent à la recherche de catalogue et ne sont pas
+rapportés ici, et une archive qui n'a pas été interrogée n'en porte rien.
 
 ### `search_items`
 
@@ -714,9 +754,15 @@ Ne nommer aucune nature laisse l'Internet Archive chercher dans tout et demande
 `books` à la Library, qui tient un catalogue par nature et exige donc qu'on en
 nomme un. La réponse le dit.
 
-`per_source` porte aussi `searches_on`, `row_describes` et `filters_dropped` :
-c'est ce qu'un appelant lit avant de comparer deux lignes ou de se fier à un
-filtre.
+Une ligne porte aussi `found_by_query`, qui nomme la formulation sous laquelle
+elle est revenue.
+
+`per_source` porte aussi `searches_on`, `row_describes`, `requires_every_word` et
+`filters_dropped` : c'est ce qu'un appelant lit avant de comparer deux lignes ou
+de se fier à un filtre. Un intervalle d'années dont la borne basse est postérieure
+à la borne haute ne nomme aucune année : il est refusé plutôt qu'envoyé, parce
+qu'une archive répond alors par rien et une autre comme si aucun intervalle
+n'avait été donné, et ni l'une ni l'autre n'est l'intervalle appliqué.
 
 ### `get_item`
 

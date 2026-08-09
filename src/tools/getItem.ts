@@ -26,6 +26,7 @@ export const getItemDescription = [
   "'identifier' must come from search_inside or search_items. It names the archive, so this reads the right one without guessing; a string no archive would have minted is refused, and a shape more than one archive mints is refused rather than sent to a guess, because sending it anywhere answers about the wrong thing.",
   "Terms of reuse come back on every read and belong to that record alone. A record stating none has granted nothing, and silence is never read as permission.",
   "'sections' decides what else comes back, and the answer names what was left out and what this archive files nothing under: a field empty because nobody asked for it is a different thing from a field the archive never fills.",
+  "'description_means' says what the archive files under the field this reads a description out of, which holds an account of the thing on one record and a line of the catalogue entry on the next.",
   "Long prose is returned one window at a time: 'text_offset' says where to resume, and a window ends at a line boundary. An offset past the end says so rather than answering with an empty description.",
   "An answer can take several seconds, because one of the archives publishes a request ceiling this server keeps to.",
 ].join(" ");
@@ -98,7 +99,15 @@ export const getItemOutput = z.object({
     description: z
       .string()
       .nullable()
-      .describe("The window of the record's own prose that 'text_window' describes."),
+      .describe(
+        "The window of this record's description that 'text_window' describes. 'description_means' says what this archive files under that name, which is not always prose about the thing.",
+      ),
+    description_means: z
+      .string()
+      .nullable()
+      .describe(
+        "What the field this description was read out of holds on this archive. Null on an archive no description is read from.",
+      ),
     notes: z
       .array(z.string())
       .describe(
@@ -126,7 +135,7 @@ export const getItemOutput = z.object({
       .number()
       .int()
       .describe(
-        "Entries the archive lists against this record that are its own bookkeeping or the by-products of its processing rather than copies of the thing. They were left out of 'copies' and are on the archive's own page.",
+        "Entries the archive lists against this record that are not copies of the thing: its own bookkeeping, the by-products of its processing, or an image it attaches to illustrate the record. They were left out of 'copies' and are on the archive's own page.",
       ),
     context: z.array(z.string()).describe("Collections, divisions and shelves the record sits in."),
   }),
@@ -202,8 +211,15 @@ export async function runGetItem(client: BooksClient, args: GetItemArgs): Promis
       // The archive's own page lists these, so a reader counting there and
       // counting here would otherwise find two numbers and no reason for them.
       notes.push(
-        `${item.sourceName} lists ${item.generatedEntries} further ${item.generatedEntries === 1 ? "entry" : "entries"} against this record that are its own bookkeeping or the by-products of its processing rather than copies of the thing, and they are left out. They are on the record's own page.`,
+        `${item.sourceName} lists ${item.generatedEntries} further ${item.generatedEntries === 1 ? "entry" : "entries"} against this record that are not copies of the thing: its own bookkeeping, the by-products of its processing, or an image attached to illustrate the record. They are left out here and are on the record's own page.`,
       );
+    }
+
+    // A field called a description is filled with whatever the archive files
+    // there, and a reader in front of one line of it has no way to tell an
+    // account of the thing from a fragment of the catalogue record.
+    if (wanted.has("description") && profile?.descriptionMeans) {
+      notes.push(`A description from ${item.sourceName} is ${profile.descriptionMeans}.`);
     }
 
     notes.push(rightsNote(item.rights, item.sourceName));
@@ -233,7 +249,11 @@ export async function runGetItem(client: BooksClient, args: GetItemArgs): Promis
       notes.push(`Credit this as "${item.attribution}": ${profile.creditNote}.`);
     }
     notes.push(`A year on ${item.sourceName} is ${yearMeans}.`);
-    if (cached) notes.push("Served from an in-memory cache rather than from the archive itself.");
+    if (cached) {
+      notes.push(
+        `This record was served out of an in-memory cache rather than read from ${item.sourceName} again.`,
+      );
+    }
 
     const payload = {
       id: item.id,
@@ -250,6 +270,7 @@ export async function runGetItem(client: BooksClient, args: GetItemArgs): Promis
       attribution: item.attribution,
       identifier_provisional: item.identifierProvisional,
       description: wanted.has("description") ? (window.text === "" ? null : window.text) : null,
+      description_means: profile?.descriptionMeans ?? null,
       notes: wanted.has("description") ? item.notes : [],
       subjects: wanted.has("subjects") ? item.subjects : [],
       rights: {

@@ -20,6 +20,18 @@ const SEPARATOR = ":";
 const LOOKS_LIKE_ADDRESS = /^(?:[a-z][a-z0-9+.-]*:)?\/\//i;
 
 /**
+ * A character that is removed or changed on its way into a rendered answer.
+ *
+ * Every value an answer quotes passes through the same escaping, which drops
+ * these because they render as nothing and can rearrange the text around them.
+ * An identifier carrying one would therefore be sent to an archive in one
+ * spelling and named in the answer in another, so a caller would read a record
+ * asked about under a name nobody asked about, and an absence stated of that
+ * name was established about no record at all.
+ */
+const RENDERS_AS_NOTHING = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
+
+/**
  * Whether a string carries a path segment that walks upwards, read as written
  * and read again once its escapes have been resolved.
  */
@@ -62,6 +74,18 @@ export function resolveId(rawId: string, sources: readonly SourceAdapter[]): Res
     throw invalidInput(
       "A record identifier is required.",
       `Use one of the ids a search returned, such as ${example(sources)}.`,
+    );
+  }
+
+  // Refused before anything is routed, and without quoting the string: quoting
+  // it here would print the very spelling that differs from the one that would
+  // have been sent, which is the confusion this refusal exists to prevent.
+  if (RENDERS_AS_NOTHING.test(trimmed)) {
+    throw invalidInput(
+      "That identifier carries a control character, which renders as nothing and is no part of " +
+        "any identifier an archive mints. Nothing was asked of any of them, because the record " +
+        "asked about and the record this answer could name would not be the same one.",
+      `Take the identifier from a search result, which reads like ${example(sources)}.`,
     );
   }
 
