@@ -45,6 +45,12 @@ jobs:
           BOOKS_MIN_INTERVAL_MS: "8000"
           # Generous: a canary must fail on a changed contract, not on a slow night.
           BOOKS_TIMEOUT_MS: "90000"
+          # One retry rides out a single hiccup, which is all this job needs: it
+          # asks each route once and checks the shape of the answer. Further
+          # attempts would only lengthen the wait before an archive's silence is
+          # reported, and the suite waits for that report rather than cutting it
+          # short.
+          BOOKS_MAX_RETRIES: "1"
           BOOKS_LOG_LEVEL: info
         run: npm run test:live
 
