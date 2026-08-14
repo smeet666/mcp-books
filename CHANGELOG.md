@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.2.2
+
+### Fixed
+
+- The live suite gives each test the time the client is entitled to spend,
+  counted from the deadline it keeps over one archive rather than written by
+  hand. That deadline covers every attempt, the pacing owed before each of them
+  and the wait an archive can ask the server to keep, and reaching it raises an
+  error naming the archive and the moment it gave up. The suite's own ceiling
+  was shorter than it, so an archive that answered slowly was reported as a bare
+  test timeout naming neither archive nor stage, and a slow night read exactly
+  like an archive that had changed the shape of what it publishes.
+
+### Added
+
+- `BooksClient` publishes `slowestDeadlineMs`, the longest one read of one
+  archive can take before the client gives up and says so, and
+  `slowestAnswerMs`, the same figure over the ladder of wordings one search may
+  send. A caller holding a deadline of its own can size it from these rather
+  than from a number that drifts as settings change.
+
 ## 1.2.1
 
 - The README carries the same badge row as every server here: npm, CI, the

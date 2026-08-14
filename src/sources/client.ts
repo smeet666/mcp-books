@@ -541,6 +541,31 @@ export class BooksClient {
   }
 
   /**
+   * The longest one read of one archive can take before this client gives up
+   * on it and says so.
+   *
+   * Reaching it produces an error naming the archive and the moment. Anything
+   * waiting on this client that gives up sooner replaces that error with its
+   * own silence, so a caller holding a deadline of its own wants this number
+   * rather than one written by hand.
+   */
+  get slowestDeadlineMs(): number {
+    return Math.max(0, ...this.sources.map((source) => this.deadlineFor(source)));
+  }
+
+  /**
+   * The longest one search can take, over every archive at once.
+   *
+   * A search sends a ladder of wordings to each archive in turn, so one call
+   * can spend the backstop over one archive once per wording it is entitled to
+   * send. The archives are asked together, which is why this is the cost of the
+   * slowest of them rather than the sum of all.
+   */
+  get slowestAnswerMs(): number {
+    return this.slowestDeadlineMs * MAX_QUERIES_PER_SOURCE;
+  }
+
+  /**
    * The backstop deadline over one archive.
    *
    * It has to cover every attempt the reader is entitled to make, the pacing

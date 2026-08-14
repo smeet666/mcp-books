@@ -1,6 +1,6 @@
 {
   "name": "mcp-books",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "MCP server that searches the Internet Archive, the Library of Congress and data.bnf.fr at once, inside scanned text and across catalogues. No API key required.",
   "keywords": [
     "mcp",
@@ -58,7 +58,7 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run test/unit",
-    "test:live": "vitest run test/live --testTimeout=180000",
+    "test:live": "vitest run test/live",
     "format": "prettier --write .",
     "prepublishOnly": "npm run typecheck && npm run test && npm run build",
     "start": "node dist/index.js",
