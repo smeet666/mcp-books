@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.2.4
+
+### Fixed
+
+- A full-text search whose backend failed inside the Internet Archive is reported
+  as an archive that did not answer, rather than as a search written wrongly. The
+  Archive answers such a failure with the status it also uses to refuse a
+  request, and the reading of it now tells a reason about the query from one
+  naming a service of the Archive's own that did not respond.
+
 ## 1.2.3
 
 ### Fixed
