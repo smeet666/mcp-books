@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 1.2.3
+
+### Fixed
+
+- A full-text search the Internet Archive declined to serve at that moment is
+  reported as an archive that did not answer, rather than as a search the caller
+  wrote wrongly. The Archive uses one status for a request it objects to and for
+  one it will not serve, and the reading of it now separates the two on whether
+  the Archive stated a reason. A well-formed search could come back naming the
+  Internet Archive as having refused it and advising a check of its quotation
+  marks, while the same words were answered a minute later.
+
 ## 1.2.2
 
 ### Fixed
