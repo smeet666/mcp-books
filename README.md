@@ -5,7 +5,7 @@
 [![license](https://img.shields.io/npm/l/mcp-books.svg)](./LICENSE)
 [![MCP Registry](https://img.shields.io/badge/MCP_Registry-listed-6E56CF)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.smeet666/mcp-books)
 [![Glama](https://glama.ai/mcp/servers/smeet666/mcp-books/badges/score.svg)](https://glama.ai/mcp/servers/smeet666/mcp-books)
-[![M8ven Score](https://m8ven.ai/badge/mcp/smeet666-mcp-books-1kpajy)](https://m8ven.ai/mcp/smeet666-mcp-books-1kpajy)
+[![M8ven](https://m8ven.ai/badge/mcp/smeet666-mcp-books-1kpajy?variant=verified)](https://m8ven.ai/mcp/smeet666-mcp-books-1kpajy)
 <!-- m8ven-verify: 9550b67f15a2d999bf8a5859c9368aeb -->
 [![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=books&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIm1jcC1ib29rcyJdfQ%3D%3D)
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install-0098FF?style=flat&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=books&config=%7B%22name%22%3A%22books%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22mcp-books%22%5D%7D)
