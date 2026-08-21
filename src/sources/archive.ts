@@ -186,7 +186,9 @@ const BOOKKEEPING_NAME =
 
 /** Whether an entry is the Archive's own working file rather than a copy. */
 function isGenerated(entry: { label: string | null; format: string | null }): boolean {
-  if (entry.label !== null && BOOKKEEPING_NAME.test(entry.label)) return true;
+  if (entry.label !== null && BOOKKEEPING_NAME.test(entry.label)) {
+    return true;
+  }
   return entry.format !== null && GENERATED_FORMATS.has(entry.format.trim().toLowerCase());
 }
 
@@ -242,7 +244,9 @@ export function archiveAdapter(reader: ArchiveReader): SourceAdapter {
         // Rows past the limit are counted and dropped without being built: an
         // answer asked for five matches has no use for the five thousandth,
         // and building it costs the same as building one that is returned.
-        if (rows.length >= query.limit) break;
+        if (rows.length >= query.limit) {
+          break;
+        }
         // A match needs an identifier to be read again and an address to be
         // cited. A row missing either is dropped rather than returned with a
         // hole where the citation belongs.
@@ -304,7 +308,9 @@ export function archiveAdapter(reader: ArchiveReader): SourceAdapter {
       let skipped = 0;
 
       for (const raw of list) {
-        if (rows.length >= query.limit) break;
+        if (rows.length >= query.limit) {
+          break;
+        }
         const identifier = reference(raw?.identifier);
         const sourceUrl = text(raw?.sourceUrl);
         if (!identifier || !sourceUrl) {
@@ -382,7 +388,9 @@ export function archiveDetail(payload: unknown): ItemDetail {
 
   const context = [...textList(record.collections)];
   const publisher = text(record.publisher);
-  if (publisher) context.push(`published by ${publisher}`);
+  if (publisher) {
+    context.push(`published by ${publisher}`);
+  }
 
   return {
     id: namespacedId(ARCHIVE_PROFILE.id, identifier),
@@ -423,7 +431,9 @@ export function archiveDetail(payload: unknown): ItemDetail {
  * and a list on another, and often a comma-separated line inside either.
  */
 function subjectsOf(raw: unknown): string[] {
-  if (typeof raw !== "object" || raw === null) return [];
+  if (typeof raw !== "object" || raw === null) {
+    return [];
+  }
   const value = (raw as Record<string, unknown>).subject;
   const entries = typeof value === "string" ? [value] : textList(value);
   const kept = entries.flatMap((entry) =>

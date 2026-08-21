@@ -136,7 +136,9 @@ function withGuarantees(config: Config): Config {
 
   const bounded = (value: unknown, fallback: number, min: number, max: number): number => {
     const parsed = Number(value);
-    if (!Number.isFinite(parsed)) return fallback;
+    if (!Number.isFinite(parsed)) {
+      return fallback;
+    }
     return Math.min(max, Math.max(min, parsed));
   };
 
@@ -251,7 +253,9 @@ function moreBeyond(
   limit: number,
   count: number,
 ): boolean | null {
-  if (reportedTotal === null) return null;
+  if (reportedTotal === null) {
+    return null;
+  }
   return reportedTotal > (page - 1) * limit + count;
 }
 
@@ -367,7 +371,9 @@ export function droppedFilters(
  * owed, and the caller is told which way round the bounds go.
  */
 function checkYearRange(yearFrom?: number, yearTo?: number): void {
-  if (yearFrom === undefined || yearTo === undefined || yearFrom <= yearTo) return;
+  if (yearFrom === undefined || yearTo === undefined || yearFrom <= yearTo) {
+    return;
+  }
   throw invalidInput(
     `year_from ${yearFrom} is later than year_to ${yearTo}, so the range names no year and no archive can be narrowed to it.`,
     `Ask for year_from ${yearTo} and year_to ${yearFrom} to search that span, or give one bound and leave the other out.`,
@@ -381,10 +387,14 @@ function filtersAsked(options: {
   sort: SortKey;
 }): CatalogueFilter[] {
   const wanted: CatalogueFilter[] = [];
-  if (options.yearFrom !== undefined || options.yearTo !== undefined) wanted.push("year_range");
+  if (options.yearFrom !== undefined || options.yearTo !== undefined) {
+    wanted.push("year_range");
+  }
   // Relevance is what an archive does when nothing is asked of it, so asking
   // for it narrows nothing and there is nothing to report as dropped.
-  if (options.sort !== "relevance") wanted.push("sort");
+  if (options.sort !== "relevance") {
+    wanted.push("sort");
+  }
   return wanted;
 }
 
@@ -404,7 +414,9 @@ export function interleave<T>(groups: T[][]): T[] {
   for (let index = 0; index < longest; index += 1) {
     for (const group of groups) {
       const row = group[index];
-      if (row !== undefined) merged.push(row);
+      if (row !== undefined) {
+        merged.push(row);
+      }
     }
   }
   return merged;
@@ -488,7 +500,7 @@ export function chooseMediaTypes(
       source,
       because:
         `${source.name} files no kind of material under "${wanted}". It was not asked, because ` +
-        `translating that name into one of its own would search a different set of things than ` +
+        "translating that name into one of its own would search a different set of things than " +
         `the one requested. Its own names are: ${source.mediaTypes.join(", ")}.`,
     });
   }
@@ -887,7 +899,9 @@ export class BooksClient {
           // Deduplication is on the identifier this server hands out, which
           // names its archive: the same string from two archives is two
           // records, and folding them together would drop one of them.
-          if (seen.has(row.id)) continue;
+          if (seen.has(row.id)) {
+            continue;
+          }
           seen.add(row.id);
           // The wording rides on the row from here, so a reader holding one row
           // can tell how much of the question it answers. A row a later wording
@@ -900,13 +914,17 @@ export class BooksClient {
           });
           added += 1;
         }
-        if (first !== null && added > 0) beyondThatWording = true;
+        if (first !== null && added > 0) {
+          beyondThatWording = true;
+        }
         if (read.skipped > 0) {
           this.logger.warn(
             `${source.name} sent ${read.skipped} row(s) this server could not read; they were left out.`,
           );
         }
-        if (read.cached) cached = true;
+        if (read.cached) {
+          cached = true;
+        }
         // The rows in hand are counted the same way whether they were just
         // read or kept from an earlier read, so the count keeps one shape. What
         // an earlier read dropped before keeping the rest is nobody's count,
@@ -947,7 +965,9 @@ export class BooksClient {
         // question. A wording this server derived failing afterwards is a
         // failure of that wording, and reporting it as an archive that did not
         // answer would throw away rows the archive did give.
-        if (first === null) error = failure;
+        if (first === null) {
+          error = failure;
+        }
         stopped = `${source.name} did not answer the wording before this one`;
       }
     }
@@ -999,6 +1019,10 @@ function boundedLimit(limit: number): number {
 /** The capabilities the registered archives answer between them. */
 export function capabilitiesOf(sources: readonly SourceAdapter[]): Set<Capability> {
   const found = new Set<Capability>();
-  for (const source of sources) for (const answer of source.answers) found.add(answer);
+  for (const source of sources) {
+    for (const answer of source.answers) {
+      found.add(answer);
+    }
+  }
   return found;
 }

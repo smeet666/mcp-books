@@ -214,7 +214,9 @@ describe("a row describing a work rather than a copy", () => {
     const fromBnf = payload.items.filter((row) => row.source === "bnf");
 
     expect(fromBnf.length).toBeGreaterThan(0);
-    for (const row of fromBnf) expect(row.media_type).toBe("work");
+    for (const row of fromBnf) {
+      expect(row.media_type).toBe("work");
+    }
   });
 
   it("says what one of its rows is, beside the archives that hold copies", async () => {
@@ -432,9 +434,13 @@ describe("a link to a digitised document", () => {
           walk(path);
           continue;
         }
-        if (!path.endsWith(".ts")) continue;
+        if (!path.endsWith(".ts")) {
+          continue;
+        }
         for (const [index, line] of readFileSync(path, "utf8").split("\n").entries()) {
-          if (!/gallica\.bnf\.fr/i.test(line)) continue;
+          if (!/gallica\.bnf\.fr/i.test(line)) {
+            continue;
+          }
           // A digitised document is an address a person opens. A line that both
           // names that host and hands a value to something that fetches it is
           // the one shape this server must never carry.

@@ -107,7 +107,9 @@ export function selectSources(
   sources: SourceAdapter[],
   wanted: readonly SourceId[] | undefined,
 ): SourceAdapter[] {
-  if (!wanted) return sources;
+  if (!wanted) {
+    return sources;
+  }
 
   const unknown = wanted.filter((id) => !sources.some((source) => source.id === id));
   if (unknown.length > 0) {

@@ -392,7 +392,9 @@ describe("a configuration object handed to the published client", () => {
       config: { minIntervalMs: 9000 },
       readers: { archive: fakeArchive(), loc: fakeLoc(), bnf: fakeBnf() },
     });
-    for (const entry of client.pacing) expect(entry.intervalMs).toBe(9000);
+    for (const entry of client.pacing) {
+      expect(entry.intervalMs).toBe(9000);
+    }
   });
 
   it("keeps the project's own identifier in a User-Agent a caller replaced", () => {

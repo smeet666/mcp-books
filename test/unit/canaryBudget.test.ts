@@ -35,7 +35,9 @@ function canaryEnvironment(): NodeJS.ProcessEnv {
   for (const match of workflow.matchAll(/^\s+(BOOKS_[A-Z_]+):\s*"?([^"\n]+)"?$/gm)) {
     const name = match[1];
     const value = match[2];
-    if (name === undefined || value === undefined) continue;
+    if (name === undefined || value === undefined) {
+      continue;
+    }
     env[name] = value.trim();
   }
   return env;

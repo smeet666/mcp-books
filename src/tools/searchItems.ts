@@ -231,7 +231,9 @@ export async function runSearchItems(
     if (args.media_type === undefined) {
       for (const report of answered) {
         const profile = profiles.get(report.source);
-        if (!profile || profile.defaultMediaType === null) continue;
+        if (!profile || profile.defaultMediaType === null) {
+          continue;
+        }
         notes.push(
           `${report.name} keeps one catalogue per kind of material, so it was asked for "${profile.defaultMediaType}" and nothing else. Set media_type to read another of its catalogues: ${profile.mediaTypes.join(", ")}.`,
         );
@@ -327,14 +329,18 @@ export async function runSearchItems(
     // reader is least able to see what was and was not searched.
     for (const report of answered) {
       const caveat = profiles.get(report.source)?.searchesOnCaveat;
-      if (caveat) notes.push(`${report.name} ${caveat}`);
+      if (caveat) {
+        notes.push(`${report.name} ${caveat}`);
+      }
     }
 
     // A catalogue that scores the words rather than requiring them all answers
     // a long query with the records it ranks highest, so a row can carry some
     // of the words and none of the rest.
     for (const report of contributed) {
-      if (profiles.get(report.source)?.catalogueRequiresEveryWord !== false) continue;
+      if (profiles.get(report.source)?.catalogueRequiresEveryWord !== false) {
+        continue;
+      }
       notes.push(
         `${report.name} does not require every word given to appear: it scores them and answers with the records it ranks highest, so a row of its here can carry only some of them.`,
       );
@@ -344,7 +350,9 @@ export async function runSearchItems(
     // a character that is no word to it falls outside that promise.
     const outsideTheWords = nonWordCharacters(args.query);
     const outsideNote = nonWordCharactersNote(outsideTheWords);
-    if (outsideNote) notes.push(outsideNote);
+    if (outsideNote) {
+      notes.push(outsideNote);
+    }
 
     // The word a record carries for the kind of thing and the names this
     // argument takes are two vocabularies. A caller holding one answer sees
@@ -360,7 +368,9 @@ export async function runSearchItems(
             .filter((word) => !vocabulary.includes(word)),
         ),
       ];
-      if (carried.length === 0) continue;
+      if (carried.length === 0) {
+        continue;
+      }
       notes.push(
         `${report.name} answered with rows whose own word for the kind of thing is not one of the names media_type takes: ${carried.map((word) => `"${quoteForeign(word)}"`).join(", ")}. A row carries the word its record carries, and 'media_types' lists the names this archive's catalogue is divided under.`,
       );
@@ -471,11 +481,7 @@ export async function runSearchItems(
 }
 
 /** A compact listing, carrying what it takes to pick one record out of many. */
-function renderRows(
-  rows: Array<z.infer<typeof rowSchema>>,
-  query: string,
-  notes: string[],
-): string {
+function renderRows(rows: z.infer<typeof rowSchema>[], query: string, notes: string[]): string {
   const blocks = rows.map((row, index) => {
     const head = [
       `${index + 1}. ${quoteForeign(row.title ?? row.identifier)}`,

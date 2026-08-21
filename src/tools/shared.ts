@@ -547,7 +547,9 @@ export function nonWordCharacters(query: string): string[] {
  * their code points, since one of them can be invisible where this is read.
  */
 export function nonWordCharactersNote(found: readonly string[]): string | null {
-  if (found.length === 0) return null;
+  if (found.length === 0) {
+    return null;
+  }
   const named = found.map((character) => `"${character}" (${codePointOf(character)})`).join(", ");
   const one = found.length === 1;
   return (
@@ -578,7 +580,9 @@ export function queryNotes(reports: SourceReport[]): string[] {
 
   for (const report of reports) {
     const sent = report.queries.filter((entry) => entry.ran);
-    if (sent.length === 0) continue;
+    if (sent.length === 0) {
+      continue;
+    }
 
     const contributed = sent.slice(1).some((entry) => (entry.added ?? 0) > 0);
     const refused = sent.some((entry) => entry.error !== null);
@@ -588,8 +592,12 @@ export function queryNotes(reports: SourceReport[]): string[] {
     // nothing a reader has to know to read it. They stay in 'queries', where a
     // caller checking how the answer was built will find them, rather than in
     // the block, where they would push out a sentence that does qualify it.
-    if (!contributed && !refused && !emptyAsAsked) continue;
-    if (contributed) unioned = true;
+    if (!contributed && !refused && !emptyAsAsked) {
+      continue;
+    }
+    if (contributed) {
+      unioned = true;
+    }
 
     // The words as asked open the line of every archive and open the block
     // above it, so they are named rather than quoted a third time. The derived
@@ -848,7 +856,9 @@ export function roomForBody(options: OkOptions = {}): number {
 }
 
 export function truncate(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text;
+  if (text.length <= maxChars) {
+    return text;
+  }
   const kept = text.slice(0, Math.max(0, maxChars - 1)).trimEnd();
   // A passage an archive already elided ends on this mark, and a second one
   // beside it reads as two cuts where there was one.
@@ -863,7 +873,9 @@ export function truncate(text: string, maxChars: number): string {
  * and crediting it would say it had.
  */
 export function creditLine(contributors: Array<{ attribution: string; url?: string }>): string {
-  if (contributors.length === 0) return "No archive contributed to this answer.";
+  if (contributors.length === 0) {
+    return "No archive contributed to this answer.";
+  }
   const names = contributors.map((entry) =>
     entry.url ? `${entry.attribution} — ${quoteForeign(entry.url)}` : entry.attribution,
   );

@@ -172,7 +172,9 @@ export async function runSearchInside(
     // a weaker statement: it can carry some of the words and not the rest. A
     // reader comparing rows from two archives is comparing two promises.
     for (const report of contributed) {
-      if (profiles.get(report.source)?.insideRequiresEveryWord !== false) continue;
+      if (profiles.get(report.source)?.insideRequiresEveryWord !== false) {
+        continue;
+      }
       notes.push(
         `${report.name} does not require every word given to appear: it scores them and answers with the pages it ranks highest, so a match of its here can carry only some of them. Read the page before saying the words were printed together.`,
       );
@@ -182,7 +184,9 @@ export async function runSearchInside(
     // character that is no word to it falls outside that promise.
     const outsideTheWords = nonWordCharacters(args.query);
     const outsideNote = nonWordCharactersNote(outsideTheWords);
-    if (outsideNote) notes.push(outsideNote);
+    if (outsideNote) {
+      notes.push(outsideNote);
+    }
 
     // The corpora themselves are named in 'per_source', so this says only what
     // follows from their being different, which is what a merged list invites a
@@ -233,7 +237,9 @@ export async function runSearchInside(
     // difference is only readable when the answer states which is which.
     for (const report of answered) {
       const profile = profiles.get(report.source);
-      if (!profile || profile.publishesPageNumber || report.count === 0) continue;
+      if (!profile || profile.publishesPageNumber || report.count === 0) {
+        continue;
+      }
       notes.push(
         `${report.name} publishes no leaf number in its full-text index, so page_number is null on all ${report.count} of its matches here. That is the index holding none, and no page is invented in its place.`,
       );
@@ -265,10 +271,14 @@ export async function runSearchInside(
     // The caveat is what an excerpt is worth, so it belongs to an answer that
     // carries one. On an answer quoting nothing it describes text that is not
     // there and takes room from a sentence that does qualify the answer.
-    if (excerptKinds.passage + excerptKinds.page_opening > 0) notes.push(OCR_CAVEAT);
+    if (excerptKinds.passage + excerptKinds.page_opening > 0) {
+      notes.push(OCR_CAVEAT);
+    }
 
     for (const report of answered) {
-      if (report.moreOnThisArchive !== true) continue;
+      if (report.moreOnThisArchive !== true) {
+        continue;
+      }
       notes.push(
         args.page < LAST_PAGE
           ? `${report.name} says more matches follow this page. Ask for page ${args.page + 1} to continue reading its side of the answer.`
@@ -354,7 +364,7 @@ export function insideContext(profile: SourceProfile | undefined, asked: boolean
 }
 
 function renderBody(
-  hits: Array<z.infer<typeof hitSchema>>,
+  hits: z.infer<typeof hitSchema>[],
   args: SearchInsideArgs,
   asked: number,
   answered: number,

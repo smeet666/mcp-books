@@ -163,7 +163,9 @@ describe("Ben asks for something under 300 pages, which no archive filters on", 
     const payload = payloadOf<{ items: Array<{ source_url: string }> }>(
       await runSearchItems(fakeClient(), itemArgs({ query: "cormorant under 300 pages" })),
     );
-    for (const row of payload.items) expect(row.source_url.startsWith("https://")).toBe(true);
+    for (const row of payload.items) {
+      expect(row.source_url.startsWith("https://")).toBe(true);
+    }
   });
 });
 

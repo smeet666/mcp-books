@@ -84,14 +84,18 @@ function scriptedArchive(script: Script, log: string[]): ArchiveReader {
     async searchInside(query: string) {
       log.push(`archive:${query}`);
       const failure = script.fails?.[query];
-      if (failure) throw failure;
+      if (failure) {
+        throw failure;
+      }
       const hits = (script.inside?.[query] ?? []).map(insideHit);
       return { data: { total: hits.length, hits }, cached: false };
     },
     async searchItems(query: { query: string }) {
       log.push(`archive:${query.query}`);
       const failure = script.fails?.[query.query];
-      if (failure) throw failure;
+      if (failure) {
+        throw failure;
+      }
       const items: ArchiveItemSummary[] = (script.items?.[query.query] ?? []).map((identifier) => ({
         identifier,
         title: `Volume ${identifier}`,
@@ -120,14 +124,18 @@ function scriptedLoc(script: Script, log: string[]): LocReader {
     async searchNewspapers(query: string) {
       log.push(`loc:${query}`);
       const failure = script.fails?.[query];
-      if (failure) throw failure;
+      if (failure) {
+        throw failure;
+      }
       const hits = (script.inside?.[query] ?? []).map(newspaperHit);
       return { data: { paging: paging(hits.length), hits }, cached: false };
     },
     async searchItems(query: { query: string }) {
       log.push(`loc:${query.query}`);
       const failure = script.fails?.[query.query];
-      if (failure) throw failure;
+      if (failure) {
+        throw failure;
+      }
       const records = (script.items?.[query.query] ?? []).map((identifier) => ({
         identifier,
         title: `Volume ${identifier}`,

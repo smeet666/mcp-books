@@ -44,7 +44,9 @@ describe("the text block of a default search", () => {
     const payload = payloadOf<{ hits: Array<{ id: string }> }>(result);
     const text = textOf(result);
 
-    for (const hit of payload.hits) expect(text, hit.id).toContain(`id: ${hit.id}`);
+    for (const hit of payload.hits) {
+      expect(text, hit.id).toContain(`id: ${hit.id}`);
+    }
   });
 
   it("keeps the sentence that says how to read further", async () => {

@@ -177,7 +177,9 @@ export function rowsOf<T>(value: unknown, source: SourceProfile): T[] {
  */
 export function reference(value: unknown): string | null {
   const found = text(value);
-  if (found === null) return null;
+  if (found === null) {
+    return null;
+  }
   return /[\s\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(found) ? null : found;
 }
 
@@ -196,11 +198,15 @@ export function queryTerms(query: string): string[] {
   const terms: string[] = [];
   for (const phrase of query.match(/"[^"]+"/g) ?? []) {
     const inner = phrase.slice(1, -1).trim().toLowerCase();
-    if (inner !== "") terms.push(inner);
+    if (inner !== "") {
+      terms.push(inner);
+    }
   }
   for (const word of query.replace(/"[^"]*"/g, " ").split(/[^\p{L}\p{N}'-]+/u)) {
     const lower = word.trim().toLowerCase();
-    if (lower.length > 2) terms.push(lower);
+    if (lower.length > 2) {
+      terms.push(lower);
+    }
   }
   return [...new Set(terms)];
 }
@@ -224,16 +230,22 @@ export function trimExcerpt(
   terms: readonly string[] = [],
 ): string {
   const clean = passage.replace(/\s+/g, " ").trim();
-  if (clean.length <= maxChars) return clean;
+  if (clean.length <= maxChars) {
+    return clean;
+  }
 
   const haystack = clean.toLowerCase();
   let at = -1;
   for (const term of terms) {
     const found = haystack.indexOf(term);
-    if (found !== -1 && (at === -1 || found < at)) at = found;
+    if (found !== -1 && (at === -1 || found < at)) {
+      at = found;
+    }
   }
 
-  if (at === -1) return `${cutAtSpace(clean, 0, maxChars)}…`;
+  if (at === -1) {
+    return `${cutAtSpace(clean, 0, maxChars)}…`;
+  }
 
   const half = Math.max(0, Math.floor(maxChars / 2));
   const start = Math.max(0, at - half);
@@ -245,7 +257,9 @@ export function trimExcerpt(
 function cutAtSpace(text: string, start: number, maxChars: number): string {
   const opening = start === 0 ? 0 : text.indexOf(" ", start) + 1 || start;
   const window = text.slice(opening, opening + maxChars);
-  if (opening + window.length >= text.length) return window.trim();
+  if (opening + window.length >= text.length) {
+    return window.trim();
+  }
   const space = window.lastIndexOf(" ");
   return (space > maxChars / 2 ? window.slice(0, space) : window).trim();
 }

@@ -80,12 +80,16 @@ async function asking<T extends { reports: SourceReport[] }>(
 
   for (let attempt = 1; ; attempt += 1) {
     for (const report of merged.reports) {
-      if (report.status === "answered") answered.add(report.source);
+      if (report.status === "answered") {
+        answered.add(report.source);
+      }
     }
     unreachable = merged.reports.filter(
       (report) => needs.includes(report.source) && report.status === "failed",
     );
-    if (unreachable.length === 0 || attempt >= ATTEMPTS) break;
+    if (unreachable.length === 0 || attempt >= ATTEMPTS) {
+      break;
+    }
     merged = await work();
   }
 
@@ -110,7 +114,9 @@ const budget = (searches: number, reads = 0) =>
 
 /** A failure this suite can branch on, or one that belongs to nobody here. */
 const asBooksError = (raised: unknown): BooksError => {
-  if (raised instanceof BooksError) return raised;
+  if (raised instanceof BooksError) {
+    return raised;
+  }
   throw raised;
 };
 
@@ -131,7 +137,9 @@ async function readingBack(
       return { item: read.item, unreachable: null };
     } catch (raised) {
       const known = asBooksError(raised);
-      if (!UNREACHABLE.has(known.code)) throw known;
+      if (!UNREACHABLE.has(known.code)) {
+        throw known;
+      }
       if (attempt >= ATTEMPTS) {
         return { item: null, unreachable: `[${known.code}] ${known.message}` };
       }
@@ -152,7 +160,9 @@ async function refused(id: string): Promise<BooksError> {
       await client.getItem(id);
     } catch (raised) {
       const known = asBooksError(raised);
-      if (!UNREACHABLE.has(known.code) || attempt >= ATTEMPTS) return known;
+      if (!UNREACHABLE.has(known.code) || attempt >= ATTEMPTS) {
+        return known;
+      }
       continue;
     }
     throw new Error(`"${id}" was read back as a record, and no archive holds it.`);
@@ -166,7 +176,9 @@ suite("the archives, as they are today", () => {
       const { merged, unreachable } = await asking(["archive", "loc"], () =>
         client.searchInside('"call me ishmael"', insideOptions),
       );
-      if (unreachable.length > 0) return ctx.skip(outage(unreachable));
+      if (unreachable.length > 0) {
+        return ctx.skip(outage(unreachable));
+      }
 
       expect(merged.hits.length).toBeGreaterThan(0);
       expect(new Set(merged.hits.map((hit) => hit.source)).size).toBeGreaterThan(1);
@@ -200,11 +212,15 @@ suite("the archives, as they are today", () => {
       const { merged, unreachable } = await asking(["archive"], () =>
         client.searchInside('"whale ship"', insideOptions),
       );
-      if (unreachable.length > 0) return ctx.skip(outage(unreachable));
+      if (unreachable.length > 0) {
+        return ctx.skip(outage(unreachable));
+      }
       const fromArchive = merged.hits.filter((hit) => hit.source === "archive");
 
       expect(fromArchive.length).toBeGreaterThan(0);
-      for (const hit of fromArchive) expect(hit.pageNumber).toBeNull();
+      for (const hit of fromArchive) {
+        expect(hit.pageNumber).toBeNull();
+      }
     },
     budget(1),
   );
@@ -215,7 +231,9 @@ suite("the archives, as they are today", () => {
       const { merged, unreachable } = await asking(["loc"], () =>
         client.searchInside('"harbour"', insideOptions),
       );
-      if (unreachable.length > 0) return ctx.skip(outage(unreachable));
+      if (unreachable.length > 0) {
+        return ctx.skip(outage(unreachable));
+      }
       const fromLoc = merged.hits.filter((hit) => hit.source === "loc");
 
       expect(fromLoc.length).toBeGreaterThan(0);
@@ -233,7 +251,9 @@ suite("the archives, as they are today", () => {
       const { merged, unreachable } = await asking(["loc"], () =>
         client.searchInside('"the fog"', insideOptions),
       );
-      if (unreachable.length > 0) return ctx.skip(outage(unreachable));
+      if (unreachable.length > 0) {
+        return ctx.skip(outage(unreachable));
+      }
       const fromLoc = merged.hits.filter((hit) => hit.source === "loc");
 
       expect(fromLoc.length).toBeGreaterThan(0);
@@ -250,7 +270,9 @@ suite("the archives, as they are today", () => {
       const { merged, unreachable } = await asking(["archive", "loc"], () =>
         client.searchInside('"a wet fog"', insideOptions),
       );
-      if (unreachable.length > 0) return ctx.skip(outage(unreachable));
+      if (unreachable.length > 0) {
+        return ctx.skip(outage(unreachable));
+      }
 
       for (const report of merged.reports.filter((entry) => entry.status === "answered")) {
         expect(report.reportedTotal, report.name).not.toBeNull();
@@ -266,7 +288,9 @@ suite("the archives, as they are today", () => {
       const { merged, unreachable } = await asking(["archive", "loc", "bnf"], () =>
         client.searchItems("moby dick", { sort: "relevance", limit: 2, page: 1 }),
       );
-      if (unreachable.length > 0) return ctx.skip(outage(unreachable));
+      if (unreachable.length > 0) {
+        return ctx.skip(outage(unreachable));
+      }
 
       expect(new Set(merged.rows.map((row) => row.source)).size).toBe(3);
     },
@@ -285,11 +309,15 @@ suite("the archives, as they are today", () => {
           page: 1,
         }),
       );
-      if (unreachable.length > 0) return ctx.skip(outage(unreachable));
+      if (unreachable.length > 0) {
+        return ctx.skip(outage(unreachable));
+      }
       const fromCatalogue = merged.rows.filter((row) => row.source === "bnf");
 
       expect(fromCatalogue.length).toBeGreaterThan(0);
-      for (const row of fromCatalogue) expect(row.mediaType).toBe("work");
+      for (const row of fromCatalogue) {
+        expect(row.mediaType).toBe("work");
+      }
     },
     budget(1),
   );
@@ -326,7 +354,9 @@ suite("the archives, as they are today", () => {
         conditional.map((profile) => profile.id),
         () => client.searchItems("dictionnaire", { sort: "relevance", limit: 2, page: 1 }),
       );
-      if (unreachable.length > 0) return ctx.skip(outage(unreachable));
+      if (unreachable.length > 0) {
+        return ctx.skip(outage(unreachable));
+      }
 
       const carrying = merged.reports.filter((report) =>
         conditional.some((profile) => profile.id === report.source),
@@ -366,14 +396,18 @@ suite("the archives, as they are today", () => {
       const { merged, unreachable } = await asking(["archive", "loc", "bnf"], () =>
         client.searchItems("dictionnaire", { sort: "relevance", limit: 2, page: 1 }),
       );
-      if (unreachable.length > 0) return ctx.skip(outage(unreachable));
+      if (unreachable.length > 0) {
+        return ctx.skip(outage(unreachable));
+      }
 
       for (const source of ["archive", "loc", "bnf"] as const) {
         const row = merged.rows.find((entry) => entry.source === source);
         expect(row, `no row from ${source}`).toBeDefined();
 
         const read = await readingBack(row!.id);
-        if (read.unreachable) return ctx.skip(read.unreachable);
+        if (read.unreachable) {
+          return ctx.skip(read.unreachable);
+        }
         expect(read.item!.source).toBe(source);
         expect(read.item!.sourceUrl.startsWith("https://")).toBe(true);
         expect(read.item!.identifier).toBe(row!.identifier);
@@ -388,7 +422,9 @@ suite("the archives, as they are today", () => {
       // The rule the whole server is built on: an absence is a code, never an
       // empty record that reads as "there is no such thing".
       const raised = await refused("archive:a-record-that-does-not-exist-here-at-all-0000");
-      if (UNREACHABLE.has(raised.code)) return ctx.skip(`${raised.code}: ${raised.message}`);
+      if (UNREACHABLE.has(raised.code)) {
+        return ctx.skip(`${raised.code}: ${raised.message}`);
+      }
 
       expect(raised.code).toMatch(/not_found|parse_failure/);
     },
@@ -399,7 +435,9 @@ suite("the archives, as they are today", () => {
     "names the archive and the moment when a read fails",
     async (ctx) => {
       const raised = await refused("archive:a-record-that-does-not-exist-here-at-all-0000");
-      if (UNREACHABLE.has(raised.code)) return ctx.skip(`${raised.code}: ${raised.message}`);
+      if (UNREACHABLE.has(raised.code)) {
+        return ctx.skip(`${raised.code}: ${raised.message}`);
+      }
 
       expect(raised.message).toMatch(/the Internet Archive was asked for .* and the read failed/);
     },

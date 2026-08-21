@@ -35,7 +35,9 @@ const PASSES = 5;
 
 async function fiveTimes(run: () => Promise<string>): Promise<string[]> {
   const answers: string[] = [];
-  for (let pass = 0; pass < PASSES; pass += 1) answers.push(await run());
+  for (let pass = 0; pass < PASSES; pass += 1) {
+    answers.push(await run());
+  }
   return answers;
 }
 
@@ -140,6 +142,8 @@ describe("a field a caller reads keeps one shape", () => {
     const served = await countsOf(true);
 
     expect(served).toEqual(fresh);
-    for (const [, skipped] of served) expect(typeof skipped).toBe("number");
+    for (const [, skipped] of served) {
+      expect(typeof skipped).toBe("number");
+    }
   });
 });

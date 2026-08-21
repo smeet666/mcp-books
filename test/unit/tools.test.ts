@@ -52,7 +52,9 @@ describe("search_inside", () => {
       await runSearchInside(fakeClient(), insideArgs({ max_excerpt_chars: 40 })),
     );
     for (const hit of payload.hits) {
-      for (const excerpt of hit.excerpts) expect(excerpt.length).toBeLessThanOrEqual(40);
+      for (const excerpt of hit.excerpts) {
+        expect(excerpt.length).toBeLessThanOrEqual(40);
+      }
     }
   });
 
@@ -60,7 +62,9 @@ describe("search_inside", () => {
     const payload = payloadOf<{ hits: Array<{ excerpts: string[] }> }>(
       await runSearchInside(fakeClient(), insideArgs({ max_excerpts_per_match: 1 })),
     );
-    for (const hit of payload.hits) expect(hit.excerpts.length).toBeLessThanOrEqual(1);
+    for (const hit of payload.hits) {
+      expect(hit.excerpts.length).toBeLessThanOrEqual(1);
+    }
   });
 
   it("says more matches follow when an archive reported more than it sent", async () => {
@@ -93,7 +97,9 @@ describe("search_inside", () => {
     // block drops whole matches rather than cutting one in half and losing
     // the address with the tail.
     for (const hit of payload.hits) {
-      if (!text.includes(`id: ${hit.id}`)) continue;
+      if (!text.includes(`id: ${hit.id}`)) {
+        continue;
+      }
       expect(text, hit.id).toContain(hit.source_url);
     }
     expect(text).toContain("https://archive.org/details/voyageofthecormorant00pell");
@@ -138,7 +144,9 @@ describe("search_items", () => {
       await runSearchItems(fakeClient(), itemArgs()),
     );
     const fromLoc = payload.items.filter((row) => row.source === "loc");
-    for (const row of fromLoc) expect(row.downloads).toBeNull();
+    for (const row of fromLoc) {
+      expect(row.downloads).toBeNull();
+    }
   });
 
   it("says which rows have no copy that can be read online", async () => {
