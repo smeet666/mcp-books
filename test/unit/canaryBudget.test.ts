@@ -88,12 +88,15 @@ describe("the live suite's budget", () => {
     expect(pinned === null || pinned >= client.slowestDeadlineMs).toBe(true);
   });
 
-  it("states a budget on every live test, since the default ceiling is seconds", () => {
+  it("states a budget on every live test that goes to an archive", () => {
+    // A test that reaches an archive is asynchronous, and the default ceiling
+    // is seconds where an archive is allowed minutes. One that only reads what
+    // the run already collected reaches nothing and needs no room.
     const suite = repoFile("test/live/smoke.live.test.ts");
-    const opened = [...suite.matchAll(/\bit\(\s*"/g)].length;
+    const asking = [...suite.matchAll(/\bit\(\s*"(?:[^"\\]|\\.)*",\s*async\b/g)].length;
     const budgeted = [...suite.matchAll(/\bbudget\(\d/g)].length;
 
-    expect(opened).toBeGreaterThan(0);
-    expect(budgeted).toBe(opened);
+    expect(asking).toBeGreaterThan(0);
+    expect(budgeted).toBe(asking);
   });
 });

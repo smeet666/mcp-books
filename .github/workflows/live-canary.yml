@@ -62,8 +62,13 @@ jobs:
             const title = "Live canary failing: one of the two archives may have changed";
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const body = [
-              "The nightly live canary failed. Either the Internet Archive or the Library of Congress",
-              "changed something this server reads, or one of them was unreachable from the runner.",
+              "The nightly live canary failed. One of the archives changed something this server reads,",
+              "or answered nothing at all for the whole run.",
+              "",
+              "A test whose archive did not answer stands down and names the failure, because rows are the",
+              "only evidence there is about what an archive publishes and an unreachable one sent none. So",
+              "a red run is a statement about what an archive publishes, or about an archive that nothing",
+              "reached tonight.",
               "",
               `Run: ${runUrl}`,
               "",
