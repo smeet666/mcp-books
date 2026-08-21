@@ -636,7 +636,7 @@ export class BooksClient {
     const attempts = await Promise.all(
       able.map((source) =>
         this.askLadder<Hit>(source, ladder, limit, null, (query) =>
-          source.searchInside!({
+          source.searchInside({
             query,
             limit,
             page,
@@ -647,11 +647,12 @@ export class BooksClient {
       ),
     );
 
-    const groups = attempts.map((attempt) => attempt.rows.slice(0, limit));
+    const answered = attempts.map((attempt) => ({ attempt, rows: attempt.rows.slice(0, limit) }));
+    const groups = answered.map((one) => one.rows);
     return {
       hits: carryingTheWordsFirst(interleave(groups)),
       reports: [
-        ...attempts.map((attempt, index) => reportOf(attempt, groups[index]!.length, page, limit)),
+        ...answered.map(({ attempt, rows }) => reportOf(attempt, rows.length, page, limit)),
         ...absent.map(absentReport),
       ],
       asked: attempts.length,
@@ -714,23 +715,18 @@ export class BooksClient {
             limit,
             page,
           };
-          return source.searchItems!(request);
+          return source.searchItems(request);
         });
       }),
     );
 
-    const groups = attempts.map((attempt) => attempt.rows.slice(0, limit));
+    const answered = attempts.map((attempt) => ({ attempt, rows: attempt.rows.slice(0, limit) }));
+    const groups = answered.map((one) => one.rows);
     return {
       rows: interleave(groups),
       reports: [
-        ...attempts.map((attempt, index) =>
-          reportOf(
-            attempt,
-            groups[index]!.length,
-            page,
-            limit,
-            dropped.get(attempt.source.id) ?? [],
-          ),
+        ...answered.map(({ attempt, rows }) =>
+          reportOf(attempt, rows.length, page, limit, dropped.get(attempt.source.id) ?? []),
         ),
         ...[...byCapability.absent, ...byVocabulary.absent].map(absentReport),
       ],
@@ -750,7 +746,8 @@ export class BooksClient {
   ): Promise<{ item: ItemDetail; cached: boolean; read: ResolvedId; report: SourceReport }> {
     const read = resolveId(id, this.sources);
 
-    if (!read.source.answers.includes("get_item")) {
+    const readOne = read.source.answers.includes("get_item") ? read.source.getItem : undefined;
+    if (!readOne) {
       throw invalidInput(
         `${read.source.name} cannot be asked for one record by its identifier.`,
         read.source.cannot.get_item ?? "Ask an archive that reads a record on its own.",
@@ -759,7 +756,7 @@ export class BooksClient {
 
     try {
       const outcome = await withDeadline(
-        read.source.getItem!(read.reference),
+        readOne.call(read.source, read.reference),
         this.deadlineFor(read.source),
         read.source,
       );

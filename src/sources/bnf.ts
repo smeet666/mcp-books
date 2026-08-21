@@ -184,7 +184,7 @@ export function bnfAdapter(reader: BnfReader): SourceAdapter {
       const ark = SITE_ARK.exec(raw);
       if (ark) {
         return {
-          reference: ark[1]!.toLowerCase(),
+          reference: (ark[1] ?? "").toLowerCase(),
           why: "the address is a record on data.bnf.fr",
           guess: false,
         };
@@ -193,7 +193,7 @@ export function bnfAdapter(reader: BnfReader): SourceAdapter {
       const temporary = SITE_TEMP_WORK.exec(raw);
       if (temporary) {
         return {
-          reference: `temp-work/${temporary[1]!.toLowerCase()}`,
+          reference: `temp-work/${(temporary[1] ?? "").toLowerCase()}`,
           why: "the address is a provisional record on data.bnf.fr",
           guess: false,
         };

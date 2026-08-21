@@ -133,6 +133,23 @@ export interface Absence {
   because: string;
 }
 
+/** The method an archive answers a given call with. */
+type MethodFor<C extends Capability> = C extends "search_inside"
+  ? "searchInside"
+  : C extends "search_items"
+    ? "searchItems"
+    : "getItem";
+
+/**
+ * An archive that answers one particular call.
+ *
+ * The method is optional on the adapter, because no archive answers every call.
+ * Splitting on the capability is what establishes that this one does, so the
+ * split says it in the type rather than leaving every call site to assert it.
+ */
+export type Answering<C extends Capability> = SourceAdapter &
+  Required<Pick<SourceAdapter, MethodFor<C>>>;
+
 /**
  * Split the chosen archives into those that answer a call and those that do
  * not.
@@ -141,16 +158,16 @@ export interface Absence {
  * so the answer can name it. Dropping it silently would narrow an answer while
  * leaving it looking like the whole of what the server reads.
  */
-export function splitByCapability(
+export function splitByCapability<C extends Capability>(
   sources: readonly SourceAdapter[],
-  capability: Capability,
-): { able: SourceAdapter[]; absent: Absence[] } {
-  const able: SourceAdapter[] = [];
+  capability: C,
+): { able: Answering<C>[]; absent: Absence[] } {
+  const able: Answering<C>[] = [];
   const absent: Absence[] = [];
 
   for (const source of sources) {
     if (source.answers.includes(capability)) {
-      able.push(source);
+      able.push(source as Answering<C>);
       continue;
     }
     absent.push({
