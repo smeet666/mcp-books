@@ -280,7 +280,7 @@ export async function runSearchInside(
       contributed.length > 1
         ? "One match from each archive in turn, in the order each archive returned them. Nothing ranks them against each other, and nothing orders them by date: the archives measure a year on different things."
         : contributed.length === 1
-          ? `Every match came from ${contributed[0]!.name}, in the order it returned them.`
+          ? `Every match came from ${contributed[0]?.name}, in the order it returned them.`
           : "No archive contributed a match.",
       merged.reports.some((report) => report.queries.filter((entry) => entry.ran).length > 1)
         ? "An archive asked more than one wording has its matches in the order those wordings were sent, which is this server's own order over what it received and no archive's judgement of relevance."

@@ -176,7 +176,8 @@ function namesMarkedIn(query: string): string[][] {
   const runs: string[][] = [];
   for (const [at, word] of words.entries()) {
     if (!marked[at]) continue;
-    if (at > 0 && marked[at - 1]) runs.at(-1)!.push(word);
+    const current = at > 0 && marked[at - 1] ? runs.at(-1) : undefined;
+    if (current) current.push(word);
     else runs.push([word]);
   }
   return runs;

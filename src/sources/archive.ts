@@ -209,7 +209,7 @@ export function archiveAdapter(reader: ArchiveReader): SourceAdapter {
       if (address) {
         let reference: string;
         try {
-          reference = decodeURIComponent(address[1]!);
+          reference = decodeURIComponent(address[1] ?? "");
         } catch {
           // A percent sign opening no escape is the caller's string rather
           // than an archive that failed.

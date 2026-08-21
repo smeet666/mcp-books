@@ -102,6 +102,9 @@ export interface LocRead<T> {
   skipped?: number;
 }
 
+/** The kind of material the Library searches when a caller names none. */
+const LOC_DEFAULT_MEDIA_TYPE = "books";
+
 /** The part of the Library's client this server uses. */
 export interface LocReader {
   searchItems(query: {
@@ -158,7 +161,7 @@ export const LOC_PROFILE: SourceProfile = {
   ],
   // The catalogue is one route per kind of material, so a search has to name
   // one. A caller naming none is told which one was read.
-  defaultMediaType: "books",
+  defaultMediaType: LOC_DEFAULT_MEDIA_TYPE,
   answers: ["search_inside", "search_items", "get_item"],
   cannot: {},
   honours: ["year_range", "sort"],
@@ -207,7 +210,7 @@ export function locAdapter(reader: LocReader): SourceAdapter {
       const lccn = LCCN_URL.exec(raw);
       if (lccn) {
         return {
-          reference: decodeOrRaw(lccn[1]!),
+          reference: decodeOrRaw(lccn[1] ?? ""),
           why: "the address is a catalogue number on the Library's own host",
           guess: false,
         };
@@ -215,8 +218,8 @@ export function locAdapter(reader: LocReader): SourceAdapter {
 
       const site = SITE_URL.exec(raw);
       if (site) {
-        const route = site[1]!.toLowerCase();
-        const rest = decodeOrRaw(site[2]!);
+        const route = (site[1] ?? "").toLowerCase();
+        const rest = decodeOrRaw(site[2] ?? "");
         // A collection is named by its slug alone; the address goes on to a
         // page about the collection, which is not part of what names it.
         const reference = route === "collections" ? (rest.split("/")[0] ?? rest) : rest;
@@ -307,7 +310,7 @@ export function locAdapter(reader: LocReader): SourceAdapter {
     async searchItems(query: CatalogueQuery): Promise<ReadRows<ItemRow>> {
       const outcome = await reader.searchItems({
         query: query.query,
-        format: query.mediaType ?? LOC_PROFILE.defaultMediaType!,
+        format: query.mediaType ?? LOC_DEFAULT_MEDIA_TYPE,
         ...(query.yearFrom === undefined ? {} : { yearFrom: query.yearFrom }),
         ...(query.yearTo === undefined ? {} : { yearTo: query.yearTo }),
         ...(query.sort === null ? {} : { sort: query.sort }),

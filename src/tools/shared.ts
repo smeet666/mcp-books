@@ -582,7 +582,7 @@ export function queryNotes(reports: SourceReport[]): string[] {
 
     const contributed = sent.slice(1).some((entry) => (entry.added ?? 0) > 0);
     const refused = sent.some((entry) => entry.error !== null);
-    const emptyAsAsked = sent[0]!.count === 0;
+    const emptyAsAsked = sent[0]?.count === 0;
     // An answer whose every row came from the words the caller wrote is the
     // answer to the question as put, and the wordings tried beside it changed
     // nothing a reader has to know to read it. They stay in 'queries', where a
@@ -762,7 +762,7 @@ function buildTrailer(options: OkOptions): string {
     // one there is: the room has run out either way, and what leaves is counted.
     let victim = kept.length - 1;
     for (let index = kept.length - 1; index >= 0; index -= 1) {
-      if (!LOAD_BEARING.test(kept[index]!)) {
+      if (!LOAD_BEARING.test(kept[index] ?? "")) {
         victim = index;
         break;
       }

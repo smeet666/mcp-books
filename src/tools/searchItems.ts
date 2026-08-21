@@ -354,8 +354,9 @@ export async function runSearchItems(
       const carried = [
         ...new Set(
           items
-            .filter((row) => row.source === report.source && row.media_type !== null)
-            .map((row) => row.media_type!)
+            .filter((row) => row.source === report.source)
+            .map((row) => row.media_type)
+            .filter((word) => word !== null)
             .filter((word) => !vocabulary.includes(word)),
         ),
       ];
@@ -412,7 +413,7 @@ export async function runSearchItems(
       contributed.length > 1
         ? "One row from each archive in turn, in the order each archive returned them. No score orders them against each other and no date order spans them."
         : contributed.length === 1
-          ? `Every row came from ${contributed[0]!.name}, in the order it returned them.`
+          ? `Every row came from ${contributed[0]?.name}, in the order it returned them.`
           : "No archive contributed a row.",
       merged.reports.some((report) => report.queries.filter((entry) => entry.ran).length > 1)
         ? "An archive asked more than one wording has its rows in the order those wordings were sent, which is this server's own order over what it received and no archive's judgement of relevance."
