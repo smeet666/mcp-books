@@ -30,6 +30,148 @@ import {
   toToolError,
 } from "./shared.js";
 import type { ToolResult } from "./shared.js";
+/**
+ * What each archive was actually narrowed by, where that differs from the ask.
+ *
+ * A narrowing an archive's catalogue cannot apply was never sent to it, and an
+ * answer merging its rows with rows that were narrowed has to name it:
+ * otherwise the list reads as one where every row met the criterion. The year
+ * range is the same story with an extra turn, since each archive applies it to
+ * a field of its own.
+ */
+function notesOnTheNarrowingsAsked(
+  merged: { reports: readonly SourceReport[] },
+  args: SearchItemsArgs,
+  answered: readonly SourceReport[],
+  profiles: Map<string, SourceProfile>,
+): string[] {
+  const notes: string[] = [];
+
+  for (const report of merged.reports) {
+    for (const dropped of report.filtersDropped) {
+      notes.push(
+        `${report.name} was not given the ${dropped.filter === "year_range" ? "year range" : `"${args.sort}" order`} asked for. ${dropped.because} Its rows are here unnarrowed by it, so one of them satisfying it does so by chance rather than because it was filtered.`,
+      );
+    }
+  }
+
+  // The archives that received the range are the only ones it can be said of.
+  const withRange = answered.filter(
+    (report) => !report.filtersDropped.some((dropped) => dropped.filter === "year_range"),
+  );
+  if ((args.year_from !== undefined || args.year_to !== undefined) && withRange.length > 1) {
+    notes.push(
+      `The year range was applied inside each of ${withRange
+        .map(
+          (report) =>
+            `${report.name}, on ${profiles.get(report.source)?.yearMeans ?? "a year it does not describe"}`,
+        )
+        .join("; ")}. Two rows sharing a year were not necessarily dated by the same measure.`,
+    );
+  }
+
+  // The same words put to two catalogues are two questions when one reads the
+  // whole record and another reads a title. A caller who takes them for one
+  // question reads an archive's silence as a corpus holding nothing, when it
+  // holds the thing under a field that was never searched.
+
+  return notes;
+}
+
+/**
+ * What naming a kind of material did, and what naming none did.
+ *
+ * Naming none is itself a narrowing on an archive that keeps one catalogue per
+ * kind: a caller told nothing reads the answer as the whole of what that
+ * archive holds. Naming one is a narrowing of a different sort, since a word
+ * two archives happen to spell the same way is still two names.
+ */
+function notesOnTheKindOfMaterial(
+  args: SearchItemsArgs,
+  answered: readonly SourceReport[],
+  profiles: Map<string, SourceProfile>,
+): string[] {
+  const notes: string[] = [];
+
+  // Naming no kind of material is a narrowing on an archive that keeps one
+  // catalogue per kind, and a caller told nothing reads the answer as the
+  // whole of what that archive holds.
+  if (args.media_type === undefined) {
+    for (const report of answered) {
+      const profile = profiles.get(report.source);
+      if (!profile || profile.defaultMediaType === null) {
+        continue;
+      }
+      notes.push(
+        `${report.name} keeps one catalogue per kind of material, so it was asked for "${profile.defaultMediaType}" and nothing else. Set media_type to read another of its catalogues: ${profile.mediaTypes.join(", ")}.`,
+      );
+    }
+  }
+
+  // A name two archives happen to spell the same way is still two names.
+  // Reading one answer as though the word meant one thing is the mistake the
+  // per-archive vocabulary exists to prevent.
+  if (args.media_type !== undefined && answered.length > 1) {
+    notes.push(
+      `"${args.media_type}" is a name ${answered.map((report) => report.name).join(" and ")} both use, and each read it in its own vocabulary. It was passed through rather than translated, so the two answers are about the material each archive files under that word.`,
+    );
+  }
+
+  // A date order runs on a field holding a year and nothing else, so two
+  // things it cannot express decide where rows land. An era is absent, which
+  // files a date before the common era as a year of this one. And a record
+  // stating no date is given a stand-in at one end of the calendar, so it
+  // sits where no date put it. Both make the first row of a date order
+  // something other than the oldest or newest thing an archive holds, and a
+  // caller reading it as chronology is reading a claim nobody made.
+
+  return notes;
+}
+
+/**
+ * What ordering the rows rests on, and what it cannot span.
+ *
+ * A date order reads a field each archive measures on something of its own, and
+ * the merge takes one row from each in turn rather than ranking them: no score
+ * they share exists to rank on.
+ */
+function notesOnTheOrderAsked(
+  args: SearchItemsArgs,
+  items: ReadonlyArray<{ year: number | null }>,
+  contributed: readonly SourceReport[],
+  answered: readonly SourceReport[],
+): string[] {
+  const notes: string[] = [];
+
+  if (DATE_SORTS.has(args.sort) && items.length > 0) {
+    notes.push(
+      `"${args.sort}" ordered each archive's own rows on a date field carrying a year and no era, so a date before the common era is filed there as a year of this one. A row can sit thousands of years from where its date belongs, and the first row is not established as the oldest or newest thing any archive holds. Read 'date' and the record itself before calling a row either.`,
+    );
+
+    const undated = items.filter((row) => row.year === null).length;
+    if (undated > 0) {
+      notes.push(
+        `${undated} of the ${items.length} rows here ${undated === 1 ? "carries" : "carry"} no year. An archive ordering on a date files a row without one under a stand-in rather than by its age, so where such a row lands says nothing about when it was made.`,
+      );
+    }
+  }
+
+  if (args.sort !== "relevance" && contributed.length > 1) {
+    notes.push(
+      `Each archive ordered its own rows: ${answered
+        .filter((report) => report.orderedOn !== null)
+        .map((report) => `${report.name} on ${report.orderedOn}`)
+        .join("; ")}. The merged list interleaves them, so it is not in that order end to end.`,
+    );
+  }
+
+  // A narrowing an archive's catalogue cannot apply was never sent to it, and
+  // an answer merging its rows with rows that were narrowed has to name it.
+  // Otherwise the list reads as one where every row met the criterion.
+
+  return notes;
+}
+
 import type { SourceReport } from "../types.js";
 
 /** What one archive's own report contradicts about an empty list, if anything. */
@@ -329,89 +471,12 @@ export async function runSearchItems(
         vocabulary: [...(profiles.get(report.source)?.mediaTypes ?? [])],
       }));
 
-    // Naming no kind of material is a narrowing on an archive that keeps one
-    // catalogue per kind, and a caller told nothing reads the answer as the
-    // whole of what that archive holds.
-    if (args.media_type === undefined) {
-      for (const report of answered) {
-        const profile = profiles.get(report.source);
-        if (!profile || profile.defaultMediaType === null) {
-          continue;
-        }
-        notes.push(
-          `${report.name} keeps one catalogue per kind of material, so it was asked for "${profile.defaultMediaType}" and nothing else. Set media_type to read another of its catalogues: ${profile.mediaTypes.join(", ")}.`,
-        );
-      }
-    }
+    notes.push(...notesOnTheKindOfMaterial(args, answered, profiles));
 
-    // A name two archives happen to spell the same way is still two names.
-    // Reading one answer as though the word meant one thing is the mistake the
-    // per-archive vocabulary exists to prevent.
-    if (args.media_type !== undefined && answered.length > 1) {
-      notes.push(
-        `"${args.media_type}" is a name ${answered.map((report) => report.name).join(" and ")} both use, and each read it in its own vocabulary. It was passed through rather than translated, so the two answers are about the material each archive files under that word.`,
-      );
-    }
+    notes.push(...notesOnTheOrderAsked(args, items, contributed, answered));
 
-    // A date order runs on a field holding a year and nothing else, so two
-    // things it cannot express decide where rows land. An era is absent, which
-    // files a date before the common era as a year of this one. And a record
-    // stating no date is given a stand-in at one end of the calendar, so it
-    // sits where no date put it. Both make the first row of a date order
-    // something other than the oldest or newest thing an archive holds, and a
-    // caller reading it as chronology is reading a claim nobody made.
-    if (DATE_SORTS.has(args.sort) && items.length > 0) {
-      notes.push(
-        `"${args.sort}" ordered each archive's own rows on a date field carrying a year and no era, so a date before the common era is filed there as a year of this one. A row can sit thousands of years from where its date belongs, and the first row is not established as the oldest or newest thing any archive holds. Read 'date' and the record itself before calling a row either.`,
-      );
+    notes.push(...notesOnTheNarrowingsAsked(merged, args, answered, profiles));
 
-      const undated = items.filter((row) => row.year === null).length;
-      if (undated > 0) {
-        notes.push(
-          `${undated} of the ${items.length} rows here ${undated === 1 ? "carries" : "carry"} no year. An archive ordering on a date files a row without one under a stand-in rather than by its age, so where such a row lands says nothing about when it was made.`,
-        );
-      }
-    }
-
-    if (args.sort !== "relevance" && contributed.length > 1) {
-      notes.push(
-        `Each archive ordered its own rows: ${answered
-          .filter((report) => report.orderedOn !== null)
-          .map((report) => `${report.name} on ${report.orderedOn}`)
-          .join("; ")}. The merged list interleaves them, so it is not in that order end to end.`,
-      );
-    }
-
-    // A narrowing an archive's catalogue cannot apply was never sent to it, and
-    // an answer merging its rows with rows that were narrowed has to name it.
-    // Otherwise the list reads as one where every row met the criterion.
-    for (const report of merged.reports) {
-      for (const dropped of report.filtersDropped) {
-        notes.push(
-          `${report.name} was not given the ${dropped.filter === "year_range" ? "year range" : `"${args.sort}" order`} asked for. ${dropped.because} Its rows are here unnarrowed by it, so one of them satisfying it does so by chance rather than because it was filtered.`,
-        );
-      }
-    }
-
-    // The archives that received the range are the only ones it can be said of.
-    const withRange = answered.filter(
-      (report) => !report.filtersDropped.some((dropped) => dropped.filter === "year_range"),
-    );
-    if ((args.year_from !== undefined || args.year_to !== undefined) && withRange.length > 1) {
-      notes.push(
-        `The year range was applied inside each of ${withRange
-          .map(
-            (report) =>
-              `${report.name}, on ${profiles.get(report.source)?.yearMeans ?? "a year it does not describe"}`,
-          )
-          .join("; ")}. Two rows sharing a year were not necessarily dated by the same measure.`,
-      );
-    }
-
-    // The same words put to two catalogues are two questions when one reads the
-    // whole record and another reads a title. A caller who takes them for one
-    // question reads an archive's silence as a corpus holding nothing, when it
-    // holds the thing under a field that was never searched.
     notes.push(...notesOnWhatEachCatalogueReads(answered, profiles));
 
     for (const report of contributed) {
