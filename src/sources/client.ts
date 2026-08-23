@@ -496,6 +496,46 @@ interface MediaTypeChoice {
 }
 
 /**
+ * Keep the rows a wording brought back that no earlier wording already did.
+ *
+ * Deduplication is on the identifier this server hands out, which names its
+ * archive: the same string from two archives is two records, and folding them
+ * together would drop one of them. The wording rides on the row from here, so a
+ * reader holding one row can tell how much of the question it answers, and a
+ * row a later wording repeats keeps the wording that first reached it.
+ */
+function keepNewRows<T extends { id: string }>(
+  read: ReadRows<T>,
+  variant: QueryVariant,
+  seen: Set<string>,
+  rows: T[],
+): number {
+  let added = 0;
+
+  for (const row of read.rows) {
+    // Deduplication is on the identifier this server hands out, which
+    // names its archive: the same string from two archives is two
+    // records, and folding them together would drop one of them.
+    if (seen.has(row.id)) {
+      continue;
+    }
+    seen.add(row.id);
+    // The wording rides on the row from here, so a reader holding one row
+    // can tell how much of the question it answers. A row a later wording
+    // repeats keeps the wording that first returned it, which is the one
+    // that reached it.
+    rows.push({
+      ...row,
+      foundByQuery: variant.query,
+      foundByDerivation: variant.derivation,
+    });
+    added += 1;
+  }
+
+  return added;
+}
+
+/**
  * Settle what each archive is asked to look under.
  *
  * The archives file kinds of material under different names, and `texts` and
@@ -915,36 +955,15 @@ export class BooksClient {
 
       try {
         const read = await withDeadline(work(variant.query), this.deadlineFor(source), source);
-        let added = 0;
-        for (const row of read.rows) {
-          // Deduplication is on the identifier this server hands out, which
-          // names its archive: the same string from two archives is two
-          // records, and folding them together would drop one of them.
-          if (seen.has(row.id)) {
-            continue;
-          }
-          seen.add(row.id);
-          // The wording rides on the row from here, so a reader holding one row
-          // can tell how much of the question it answers. A row a later wording
-          // repeats keeps the wording that first returned it, which is the one
-          // that reached it.
-          rows.push({
-            ...row,
-            foundByQuery: variant.query,
-            foundByDerivation: variant.derivation,
-          });
-          added += 1;
-        }
+        const added = keepNewRows(read, variant, seen, rows);
         if (first !== null && added > 0) {
           beyondThatWording = true;
         }
+        cached = cached || read.cached;
         if (read.skipped > 0) {
           this.logger.warn(
             `${source.name} sent ${read.skipped} row(s) this server could not read; they were left out.`,
           );
-        }
-        if (read.cached) {
-          cached = true;
         }
         // The rows in hand are counted the same way whether they were just
         // read or kept from an earlier read, so the count keeps one shape. What

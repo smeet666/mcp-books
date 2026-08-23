@@ -34,6 +34,59 @@ import {
 } from "./shared.js";
 import type { ToolResult } from "./shared.js";
 
+/**
+ * What kind of text each match came back with, and why that matters.
+ *
+ * An archive sends the opening of a page instead of the passage when the
+ * machine-read text it returned stops before the searched words appear. Such an
+ * excerpt does not hold the match, so a reader who takes it for one is reading
+ * text that has nothing to do with the question.
+ */
+function notesOnWhatTheExcerptsHold(
+  hits: ReadonlyArray<{ excerpt_kind: string; excerpts: readonly string[] }>,
+  notes: string[],
+): { excerptKinds: { passage: number; page_opening: number }; partitioned: boolean } {
+  const excerptKinds = {
+    passage: hits
+      .filter((hit) => hit.excerpt_kind === "passage")
+      .reduce((total, hit) => total + hit.excerpts.length, 0),
+    page_opening: hits
+      .filter((hit) => hit.excerpt_kind === "page_opening")
+      .reduce((total, hit) => total + hit.excerpts.length, 0),
+  };
+
+  // Matches are counted apart from excerpts because one match carries several
+  // excerpts, and the order below moves matches.
+  const carrying = hits.filter((hit) => hit.excerpt_kind === "passage").length;
+  const opening = hits.length - carrying;
+  const partitioned = carrying > 0 && opening > 0;
+
+  if (excerptKinds.page_opening > 0) {
+    const total = excerptKinds.passage + excerptKinds.page_opening;
+    // The placement rides on the sentence that already explains what an
+    // opening is, rather than arriving as a note of its own. The block a
+    // client renders holds a fixed amount of qualifying prose, and a second
+    // note here evicts the one saying how to read the next page or the one
+    // saying every excerpt is machine-read.
+    //
+    // It is said only where it changed something. An answer whose matches are
+    // all of one kind was placed by nothing, and describing a partition there
+    // would tell a reader some of these excerpts carry the words when none
+    // does. The full account of the order is in 'order'.
+    const placed = partitioned
+      ? ", and those matches are listed after the ones that carry them"
+      : "";
+    notes.push(
+      `${excerptKinds.page_opening} of the ${total} excerpts here ${excerptKinds.page_opening === 1 ? "is" : "are"} the opening of a page rather than the passage that matched, across ${opening} ${opening === 1 ? "match" : "matches"}${placed}. The searched words sit further down those pages than the text this server received, so quoting one of them does not quote the match: follow source_url to read the page.`,
+    );
+  }
+
+  // A null page number means two different things on two archives, and the
+  // difference is only readable when the answer states which is which.
+
+  return { excerptKinds, partitioned };
+}
+
 /** How many of the matches in hand carry no machine-read text, said as a subject. */
 function howManyCarryNoText(withoutText: number, total: number): string {
   if (withoutText < total) {
@@ -245,43 +298,7 @@ export async function runSearchInside(
       );
     }
 
-    const excerptKinds = {
-      passage: hits
-        .filter((hit) => hit.excerpt_kind === "passage")
-        .reduce((total, hit) => total + hit.excerpts.length, 0),
-      page_opening: hits
-        .filter((hit) => hit.excerpt_kind === "page_opening")
-        .reduce((total, hit) => total + hit.excerpts.length, 0),
-    };
-
-    // Matches are counted apart from excerpts because one match carries several
-    // excerpts, and the order below moves matches.
-    const carrying = hits.filter((hit) => hit.excerpt_kind === "passage").length;
-    const opening = hits.length - carrying;
-    const partitioned = carrying > 0 && opening > 0;
-
-    if (excerptKinds.page_opening > 0) {
-      const total = excerptKinds.passage + excerptKinds.page_opening;
-      // The placement rides on the sentence that already explains what an
-      // opening is, rather than arriving as a note of its own. The block a
-      // client renders holds a fixed amount of qualifying prose, and a second
-      // note here evicts the one saying how to read the next page or the one
-      // saying every excerpt is machine-read.
-      //
-      // It is said only where it changed something. An answer whose matches are
-      // all of one kind was placed by nothing, and describing a partition there
-      // would tell a reader some of these excerpts carry the words when none
-      // does. The full account of the order is in 'order'.
-      const placed = partitioned
-        ? ", and those matches are listed after the ones that carry them"
-        : "";
-      notes.push(
-        `${excerptKinds.page_opening} of the ${total} excerpts here ${excerptKinds.page_opening === 1 ? "is" : "are"} the opening of a page rather than the passage that matched, across ${opening} ${opening === 1 ? "match" : "matches"}${placed}. The searched words sit further down those pages than the text this server received, so quoting one of them does not quote the match: follow source_url to read the page.`,
-      );
-    }
-
-    // A null page number means two different things on two archives, and the
-    // difference is only readable when the answer states which is which.
+    const { excerptKinds, partitioned } = notesOnWhatTheExcerptsHold(hits, notes);
     for (const report of answered) {
       const profile = profiles.get(report.source);
       if (!profile || profile.publishesPageNumber || report.count === 0) {

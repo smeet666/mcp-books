@@ -16,6 +16,99 @@ import type { BooksClient } from "../sources/client.js";
 import { strictInput } from "./arguments.js";
 import { creditLine, ok, quoteForeign, rightsSchema, toToolError, truncate } from "./shared.js";
 import type { ToolResult } from "./shared.js";
+import type { ItemDetail, SourceProfile } from "../sources/client.js";
+
+/**
+ * The copies this answer carries, and what the list of them leaves unsaid.
+ *
+ * An archive can serve more copies than a caller asked to see, and some of the
+ * entries it lists are generated from one file rather than being separate
+ * things. Both are properties of the list rather than of the record, and a
+ * caller counting the rows would read them as the record's own.
+ */
+function copiesWithTheirCaveats(
+  item: ItemDetail,
+  args: { max_copies: number },
+  wanted: Set<Section>,
+  profile: SourceProfile | undefined,
+  notes: string[],
+): ItemDetail["copies"] {
+  const copies = wanted.has("copies") ? item.copies.slice(0, args.max_copies) : [];
+  if (wanted.has("copies") && item.copiesAvailable > copies.length) {
+    notes.push(
+      `${item.copiesAvailable} copies were read off this record and ${copies.length} are here. Raise max_copies to see more of them.`,
+    );
+  }
+  if (wanted.has("copies") && item.generatedEntries > 0) {
+    // The archive's own page lists these, so a reader counting there and
+    // counting here would otherwise find two numbers and no reason for them.
+    notes.push(
+      `${item.sourceName} lists ${item.generatedEntries} further ${item.generatedEntries === 1 ? "entry" : "entries"} against this record that are not copies of the thing: its own bookkeeping, the by-products of its processing, or an image attached to illustrate the record. They are left out here and are on the record's own page.`,
+    );
+  }
+
+  // A field called a description is filled with whatever the archive files
+  // there, and a reader in front of one line of it has no way to tell an
+  // account of the thing from a fragment of the catalogue record.
+  if (wanted.has("description") && profile?.descriptionMeans) {
+    notes.push(`A description from ${item.sourceName} is ${profile.descriptionMeans}.`);
+  }
+
+  return copies;
+}
+
+/**
+ * What this archive's own way of writing a record says about the answer.
+ *
+ * Each archive means something different by a description, by a row and by the
+ * terms it publishes, and a caller reading two answers side by side takes them
+ * for the same claim unless the answer says otherwise. A field this server
+ * reads nothing into is empty for every record it returns, never for this one.
+ */
+function notesOnWhatThisArchiveStates(
+  item: ItemDetail,
+  profile: SourceProfile | undefined,
+  omitted: readonly Section[],
+  yearMeans: string,
+  cached: boolean,
+): string[] {
+  const notes: string[] = [];
+
+  notes.push(rightsNote(item.rights, item.sourceName));
+
+  if (item.unreadFields.length > 0) {
+    notes.push(
+      `This server reads nothing into ${item.unreadFields.join(" or ")} from ${item.sourceName}, so an empty field there is empty for every record it returns rather than for this one.`,
+    );
+  }
+  if (omitted.length > 0) {
+    notes.push(
+      `${omitted.join(", ")} ${omitted.length === 1 ? "was" : "were"} not asked for, so ${omitted.length === 1 ? "it is" : "they are"} empty here for that reason alone.`,
+    );
+  }
+  // Rows from every archive carry the same fields and describe different
+  // kinds of thing. A reader who has one record in front of them is the one
+  // most likely to take it for the other kind.
+  if (profile) {
+    notes.push(`A record on ${item.sourceName} describes ${profile.rowDescribes}.`);
+  }
+  if (item.identifierProvisional === true) {
+    notes.push(
+      `${item.sourceName} calls this identifier provisional: it is held while a cataloguer settles the record and can be replaced, so a citation carrying it can stop naming anything. Prefer a settled identifier where the record offers one.`,
+    );
+  }
+  if (profile?.creditNote) {
+    notes.push(`Credit this as "${item.attribution}": ${profile.creditNote}.`);
+  }
+  notes.push(`A year on ${item.sourceName} is ${yearMeans}.`);
+  if (cached) {
+    notes.push(
+      `This record was served out of an in-memory cache rather than read from ${item.sourceName} again.`,
+    );
+  }
+
+  return notes;
+}
 
 /** The date a record states, in its own words where it wrote any. */
 function datedAs(payload: { date?: string | null; year?: number | null }): string {
@@ -226,60 +319,8 @@ export async function runGetItem(client: BooksClient, args: GetItemArgs): Promis
       );
     }
 
-    const copies = wanted.has("copies") ? item.copies.slice(0, args.max_copies) : [];
-    if (wanted.has("copies") && item.copiesAvailable > copies.length) {
-      notes.push(
-        `${item.copiesAvailable} copies were read off this record and ${copies.length} are here. Raise max_copies to see more of them.`,
-      );
-    }
-    if (wanted.has("copies") && item.generatedEntries > 0) {
-      // The archive's own page lists these, so a reader counting there and
-      // counting here would otherwise find two numbers and no reason for them.
-      notes.push(
-        `${item.sourceName} lists ${item.generatedEntries} further ${item.generatedEntries === 1 ? "entry" : "entries"} against this record that are not copies of the thing: its own bookkeeping, the by-products of its processing, or an image attached to illustrate the record. They are left out here and are on the record's own page.`,
-      );
-    }
-
-    // A field called a description is filled with whatever the archive files
-    // there, and a reader in front of one line of it has no way to tell an
-    // account of the thing from a fragment of the catalogue record.
-    if (wanted.has("description") && profile?.descriptionMeans) {
-      notes.push(`A description from ${item.sourceName} is ${profile.descriptionMeans}.`);
-    }
-
-    notes.push(rightsNote(item.rights, item.sourceName));
-
-    if (item.unreadFields.length > 0) {
-      notes.push(
-        `This server reads nothing into ${item.unreadFields.join(" or ")} from ${item.sourceName}, so an empty field there is empty for every record it returns rather than for this one.`,
-      );
-    }
-    if (omitted.length > 0) {
-      notes.push(
-        `${omitted.join(", ")} ${omitted.length === 1 ? "was" : "were"} not asked for, so ${omitted.length === 1 ? "it is" : "they are"} empty here for that reason alone.`,
-      );
-    }
-    // Rows from every archive carry the same fields and describe different
-    // kinds of thing. A reader who has one record in front of them is the one
-    // most likely to take it for the other kind.
-    if (profile) {
-      notes.push(`A record on ${item.sourceName} describes ${profile.rowDescribes}.`);
-    }
-    if (item.identifierProvisional === true) {
-      notes.push(
-        `${item.sourceName} calls this identifier provisional: it is held while a cataloguer settles the record and can be replaced, so a citation carrying it can stop naming anything. Prefer a settled identifier where the record offers one.`,
-      );
-    }
-    if (profile?.creditNote) {
-      notes.push(`Credit this as "${item.attribution}": ${profile.creditNote}.`);
-    }
-    notes.push(`A year on ${item.sourceName} is ${yearMeans}.`);
-    if (cached) {
-      notes.push(
-        `This record was served out of an in-memory cache rather than read from ${item.sourceName} again.`,
-      );
-    }
-
+    const copies = copiesWithTheirCaveats(item, args, wanted, profile, notes);
+    notes.push(...notesOnWhatThisArchiveStates(item, profile, omitted, yearMeans, cached));
     const payload = {
       id: item.id,
       source: item.source,
