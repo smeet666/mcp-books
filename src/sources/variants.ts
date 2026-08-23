@@ -82,11 +82,15 @@ export function deriveQueries(query: string): QueryVariant[] {
 
   const offer = (candidate: string, derivation: string): void => {
     const clean = tidy(candidate);
-    if (clean === "") return;
+    if (clean === "") {
+      return;
+    }
     // Two wordings differing only in case or spacing are one wording to these
     // indexes, and sending both spends an interval to learn nothing.
     const key = clean.toLowerCase();
-    if (seen.has(key)) return;
+    if (seen.has(key)) {
+      return;
+    }
     seen.add(key);
     variants.push({ query: clean, derivation });
   };
@@ -109,7 +113,9 @@ export function deriveQueries(query: string): QueryVariant[] {
   if (names.length > 0) {
     for (const keep of REDUCTIONS) {
       const picked = runsWithin(names, keep);
-      if (picked.length === 0) continue;
+      if (picked.length === 0) {
+        continue;
+      }
       offer(
         picked.join(" "),
         `the ${picked.length} word(s) this question writes with a capital letter inside the sentence, in the order they were written and with a run of them kept whole: a capital there is the writing's own mark on a name, which is what a catalogue files a record under, and reading a mark needs no lexicon`,
@@ -118,7 +124,9 @@ export function deriveQueries(query: string): QueryVariant[] {
   } else {
     const terms = queryTerms(asked);
     for (const keep of REDUCTIONS) {
-      if (terms.length <= keep) continue;
+      if (terms.length <= keep) {
+        continue;
+      }
       offer(
         longestWords(terms, keep).join(" "),
         `the ${keep} longest of the ${terms.length} words, in the order they were written: nothing in this question marks a name, so the letters are all there is to read, and a word that names a thing tends to carry more of them than a word that frames a question`,
@@ -171,14 +179,21 @@ function namesMarkedIn(query: string): string[][] {
   const marked = words.map(
     (word, at) => OPENS_ON_CAPITAL.test(word) && (at > 0 || OPENS_ON_CAPITAL.test(words[1] ?? "")),
   );
-  if (marked.every((flag) => flag)) return [];
+  if (marked.every((flag) => flag)) {
+    return [];
+  }
 
   const runs: string[][] = [];
   for (const [at, word] of words.entries()) {
-    if (!marked[at]) continue;
+    if (!marked[at]) {
+      continue;
+    }
     const current = at > 0 && marked[at - 1] ? runs.at(-1) : undefined;
-    if (current) current.push(word);
-    else runs.push([word]);
+    if (current) {
+      current.push(word);
+    } else {
+      runs.push([word]);
+    }
   }
   return runs;
 }
@@ -193,7 +208,9 @@ function namesMarkedIn(query: string): string[][] {
 function runsWithin(runs: readonly string[][], keep: number): string[] {
   const picked: string[] = [];
   for (const run of runs) {
-    if (picked.length + run.length <= keep) picked.push(...run);
+    if (picked.length + run.length <= keep) {
+      picked.push(...run);
+    }
   }
   return picked;
 }
@@ -237,7 +254,9 @@ function foldDiacritics(value: string): string {
   let onFoldableLetter = false;
   for (const character of value.normalize("NFD")) {
     if (COMBINING_MARK.test(character)) {
-      if (!onFoldableLetter) folded += character;
+      if (!onFoldableLetter) {
+        folded += character;
+      }
       continue;
     }
     onFoldableLetter = FOLDABLE_SCRIPT.test(character);
@@ -255,7 +274,11 @@ function foldDiacritics(value: string): string {
  */
 function runTogether(value: string): string | null {
   const words = tidy(value.replace(/"/g, " ")).split(" ");
-  if (words.length !== 2) return null;
-  if (words.some((word) => word.length < SHORTEST_JOINABLE_WORD)) return null;
+  if (words.length !== 2) {
+    return null;
+  }
+  if (words.some((word) => word.length < SHORTEST_JOINABLE_WORD)) {
+    return null;
+  }
   return words.join("");
 }

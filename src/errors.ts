@@ -86,7 +86,9 @@ export const timeout = (message: string, details?: ErrorDetails) =>
  * network failure, which is the reading that claims least.
  */
 export function toBooksError(error: unknown): BooksError {
-  if (error instanceof BooksError) return error;
+  if (error instanceof BooksError) {
+    return error;
+  }
 
   const message = error instanceof Error ? error.message : String(error);
   const raw = error as { code?: unknown; details?: unknown } | null;

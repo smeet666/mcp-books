@@ -34,6 +34,106 @@ import {
 } from "./shared.js";
 import type { ToolResult } from "./shared.js";
 
+/**
+ * What kind of text each match came back with, and why that matters.
+ *
+ * An archive sends the opening of a page instead of the passage when the
+ * machine-read text it returned stops before the searched words appear. Such an
+ * excerpt does not hold the match, so a reader who takes it for one is reading
+ * text that has nothing to do with the question.
+ */
+function notesOnWhatTheExcerptsHold(
+  hits: ReadonlyArray<{ excerpt_kind: string; excerpts: readonly string[] }>,
+  notes: string[],
+): { excerptKinds: { passage: number; page_opening: number }; partitioned: boolean } {
+  const excerptKinds = {
+    passage: hits
+      .filter((hit) => hit.excerpt_kind === "passage")
+      .reduce((total, hit) => total + hit.excerpts.length, 0),
+    page_opening: hits
+      .filter((hit) => hit.excerpt_kind === "page_opening")
+      .reduce((total, hit) => total + hit.excerpts.length, 0),
+  };
+
+  // Matches are counted apart from excerpts because one match carries several
+  // excerpts, and the order below moves matches.
+  const carrying = hits.filter((hit) => hit.excerpt_kind === "passage").length;
+  const opening = hits.length - carrying;
+  const partitioned = carrying > 0 && opening > 0;
+
+  if (excerptKinds.page_opening > 0) {
+    const total = excerptKinds.passage + excerptKinds.page_opening;
+    // The placement rides on the sentence that already explains what an
+    // opening is, rather than arriving as a note of its own. The block a
+    // client renders holds a fixed amount of qualifying prose, and a second
+    // note here evicts the one saying how to read the next page or the one
+    // saying every excerpt is machine-read.
+    //
+    // It is said only where it changed something. An answer whose matches are
+    // all of one kind was placed by nothing, and describing a partition there
+    // would tell a reader some of these excerpts carry the words when none
+    // does. The full account of the order is in 'order'.
+    const placed = partitioned
+      ? ", and those matches are listed after the ones that carry them"
+      : "";
+    notes.push(
+      `${excerptKinds.page_opening} of the ${total} excerpts here ${excerptKinds.page_opening === 1 ? "is" : "are"} the opening of a page rather than the passage that matched, across ${opening} ${opening === 1 ? "match" : "matches"}${placed}. The searched words sit further down those pages than the text this server received, so quoting one of them does not quote the match: follow source_url to read the page.`,
+    );
+  }
+
+  // A null page number means two different things on two archives, and the
+  // difference is only readable when the answer states which is which.
+
+  return { excerptKinds, partitioned };
+}
+
+/** How many of the matches in hand carry no machine-read text, said as a subject. */
+function howManyCarryNoText(withoutText: number, total: number): string {
+  if (withoutText < total) {
+    return `${withoutText} of the ${total} matches here`;
+  }
+  if (total === 1) {
+    return "The one match in this answer";
+  }
+  return "Every match in this answer";
+}
+
+/**
+ * The order the matches are in, and what no order could be.
+ *
+ * Nothing ranks the archives against each other and nothing orders them by
+ * date: they measure a year on different things, so the only order this server
+ * can describe is the one it imposed.
+ */
+function howTheMatchesAreOrdered(contributed: ReadonlyArray<{ name: string }>): string {
+  if (contributed.length > 1) {
+    return "One match from each archive in turn, in the order each archive returned them. Nothing ranks them against each other, and nothing orders them by date: the archives measure a year on different things.";
+  }
+  if (contributed.length === 1) {
+    return `Every match came from ${contributed[0]?.name}, in the order it returned them.`;
+  }
+  return "No archive contributed a match.";
+}
+
+/**
+ * What a row says about the leaf a match sits on.
+ *
+ * An index that publishes no leaf at all and a match whose leaf went unstated
+ * are different silences, and only the first is a property of the archive.
+ */
+function leafOf(
+  hit: { page_number: number | null; source: string },
+  profiles: Map<string, { publishesPageNumber?: boolean }>,
+): string {
+  if (hit.page_number !== null) {
+    return `· page ${hit.page_number}`;
+  }
+  if (profiles.get(hit.source)?.publishesPageNumber === false) {
+    return "· this index holds no page number";
+  }
+  return "· no page number given for this match";
+}
+
 const SOURCE_VALUES = SOURCE_IDS as unknown as [string, ...string[]];
 
 /** The last page this tool will fetch, matching the ceiling on `page`. */
@@ -172,7 +272,9 @@ export async function runSearchInside(
     // a weaker statement: it can carry some of the words and not the rest. A
     // reader comparing rows from two archives is comparing two promises.
     for (const report of contributed) {
-      if (profiles.get(report.source)?.insideRequiresEveryWord !== false) continue;
+      if (profiles.get(report.source)?.insideRequiresEveryWord !== false) {
+        continue;
+      }
       notes.push(
         `${report.name} does not require every word given to appear: it scores them and answers with the pages it ranks highest, so a match of its here can carry only some of them. Read the page before saying the words were printed together.`,
       );
@@ -182,7 +284,9 @@ export async function runSearchInside(
     // character that is no word to it falls outside that promise.
     const outsideTheWords = nonWordCharacters(args.query);
     const outsideNote = nonWordCharactersNote(outsideTheWords);
-    if (outsideNote) notes.push(outsideNote);
+    if (outsideNote) {
+      notes.push(outsideNote);
+    }
 
     // The corpora themselves are named in 'per_source', so this says only what
     // follows from their being different, which is what a merged list invites a
@@ -194,46 +298,12 @@ export async function runSearchInside(
       );
     }
 
-    const excerptKinds = {
-      passage: hits
-        .filter((hit) => hit.excerpt_kind === "passage")
-        .reduce((total, hit) => total + hit.excerpts.length, 0),
-      page_opening: hits
-        .filter((hit) => hit.excerpt_kind === "page_opening")
-        .reduce((total, hit) => total + hit.excerpts.length, 0),
-    };
-
-    // Matches are counted apart from excerpts because one match carries several
-    // excerpts, and the order below moves matches.
-    const carrying = hits.filter((hit) => hit.excerpt_kind === "passage").length;
-    const opening = hits.length - carrying;
-    const partitioned = carrying > 0 && opening > 0;
-
-    if (excerptKinds.page_opening > 0) {
-      const total = excerptKinds.passage + excerptKinds.page_opening;
-      // The placement rides on the sentence that already explains what an
-      // opening is, rather than arriving as a note of its own. The block a
-      // client renders holds a fixed amount of qualifying prose, and a second
-      // note here evicts the one saying how to read the next page or the one
-      // saying every excerpt is machine-read.
-      //
-      // It is said only where it changed something. An answer whose matches are
-      // all of one kind was placed by nothing, and describing a partition there
-      // would tell a reader some of these excerpts carry the words when none
-      // does. The full account of the order is in 'order'.
-      const placed = partitioned
-        ? ", and those matches are listed after the ones that carry them"
-        : "";
-      notes.push(
-        `${excerptKinds.page_opening} of the ${total} excerpts here ${excerptKinds.page_opening === 1 ? "is" : "are"} the opening of a page rather than the passage that matched, across ${opening} ${opening === 1 ? "match" : "matches"}${placed}. The searched words sit further down those pages than the text this server received, so quoting one of them does not quote the match: follow source_url to read the page.`,
-      );
-    }
-
-    // A null page number means two different things on two archives, and the
-    // difference is only readable when the answer states which is which.
+    const { excerptKinds, partitioned } = notesOnWhatTheExcerptsHold(hits, notes);
     for (const report of answered) {
       const profile = profiles.get(report.source);
-      if (!profile || profile.publishesPageNumber || report.count === 0) continue;
+      if (!profile || profile.publishesPageNumber || report.count === 0) {
+        continue;
+      }
       notes.push(
         `${report.name} publishes no leaf number in its full-text index, so page_number is null on all ${report.count} of its matches here. That is the index holding none, and no page is invented in its place.`,
       );
@@ -245,12 +315,7 @@ export async function runSearchInside(
     // the block had no room for.
     const withoutText = hits.filter((hit) => hit.excerpts.length === 0).length;
     if (withoutText > 0) {
-      const which =
-        withoutText < hits.length
-          ? `${withoutText} of the ${hits.length} matches here`
-          : hits.length === 1
-            ? "The one match in this answer"
-            : "Every match in this answer";
+      const which = howManyCarryNoText(withoutText, hits.length);
       notes.push(
         `${which} came back with no machine-read text, so nothing here quotes ${withoutText === 1 ? "it" : "them"}: follow source_url to read the page.`,
       );
@@ -265,10 +330,14 @@ export async function runSearchInside(
     // The caveat is what an excerpt is worth, so it belongs to an answer that
     // carries one. On an answer quoting nothing it describes text that is not
     // there and takes room from a sentence that does qualify the answer.
-    if (excerptKinds.passage + excerptKinds.page_opening > 0) notes.push(OCR_CAVEAT);
+    if (excerptKinds.passage + excerptKinds.page_opening > 0) {
+      notes.push(OCR_CAVEAT);
+    }
 
     for (const report of answered) {
-      if (report.moreOnThisArchive !== true) continue;
+      if (report.moreOnThisArchive !== true) {
+        continue;
+      }
       notes.push(
         args.page < LAST_PAGE
           ? `${report.name} says more matches follow this page. Ask for page ${args.page + 1} to continue reading its side of the answer.`
@@ -277,11 +346,7 @@ export async function runSearchInside(
     }
 
     const order = [
-      contributed.length > 1
-        ? "One match from each archive in turn, in the order each archive returned them. Nothing ranks them against each other, and nothing orders them by date: the archives measure a year on different things."
-        : contributed.length === 1
-          ? `Every match came from ${contributed[0]?.name}, in the order it returned them.`
-          : "No archive contributed a match.",
+      howTheMatchesAreOrdered(contributed),
       merged.reports.some((report) => report.queries.filter((entry) => entry.ran).length > 1)
         ? "An archive asked more than one wording has its matches in the order those wordings were sent, which is this server's own order over what it received and no archive's judgement of relevance."
         : "",
@@ -354,7 +419,7 @@ export function insideContext(profile: SourceProfile | undefined, asked: boolean
 }
 
 function renderBody(
-  hits: Array<z.infer<typeof hitSchema>>,
+  hits: z.infer<typeof hitSchema>[],
   args: SearchInsideArgs,
   asked: number,
   answered: number,
@@ -377,11 +442,7 @@ function renderBody(
       hit.year === null ? "" : `(${hit.year})`,
       hit.creator ? `· ${quoteForeign(hit.creator)}` : "",
       `· ${quoteForeign(hit.source_name)}`,
-      hit.page_number === null
-        ? profiles.get(hit.source)?.publishesPageNumber === false
-          ? "· this index holds no page number"
-          : "· no page number given for this match"
-        : `· page ${hit.page_number}`,
+      leafOf(hit, profiles),
       hit.published_on ? `· ${quoteForeign(hit.published_on)}` : "",
       hit.inside_container && hit.matched_file ? `· in ${quoteForeign(hit.matched_file)}` : "",
     ]

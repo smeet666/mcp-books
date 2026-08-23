@@ -108,7 +108,9 @@ export function buildInstructions(
   // What follows from a narrow index is written per archive, so it is named
   // with the archive it is true of rather than as a general caution.
   for (const profile of searchFields) {
-    if (!profile.searchesOnCaveat) continue;
+    if (!profile.searchesOnCaveat) {
+      continue;
+    }
     lines.push(`${profile.name} ${profile.searchesOnCaveat}`);
   }
 
@@ -152,7 +154,9 @@ export function buildInstructions(
   }
 
   for (const profile of profiles) {
-    if (!profile.creditNote) continue;
+    if (!profile.creditNote) {
+      continue;
+    }
     lines.push(
       `${profile.name} publishes on a condition: ${profile.creditNote}. Its credit line and its records carry what to say, and repeating both is what the condition asks for.`,
     );

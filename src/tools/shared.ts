@@ -5,6 +5,32 @@ import { BooksError } from "../errors.js";
 import type { Hit, ItemRow, SourceReport } from "../types.js";
 
 /** One wording put to one archive, or one derived and left unsent. */
+/**
+ * Why an archive that answered offered nothing.
+ *
+ * Three silences, and they say different things: its rows stop before this
+ * page, every wording derived from the question found nothing, or the words as
+ * asked found nothing. Only the last two are statements about the corpus, and
+ * the first is a statement about the page.
+ */
+function whyThisArchiveOfferedNothing(
+  report: SourceReport,
+  page: number,
+  pastTheRows: boolean,
+): string {
+  if (pastTheRows) {
+    return `${report.name} answered and returned no row on page ${page}. Its rows stop before this page, which says nothing about the wording or about what it holds: read page 1 for the rows it did return.`;
+  }
+  if (report.queries.filter((entry) => entry.ran).length > 1) {
+    return `${report.name} answered and offered nothing under this wording, nor under any wording derived from it. That is a statement about those wordings as much as about the corpus.`;
+  }
+  return (
+    `${report.name} answered and offered nothing under this wording. That is a statement about ` +
+    "the wording as much as about the corpus: try fewer words, or the spelling a scanner would " +
+    "have produced."
+  );
+}
+
 export const querySchema = z.object({
   query: z.string().describe("The words this archive was given, exactly as they were sent."),
   derivation: z.string().describe("How this wording was arrived at from the question, in words."),
@@ -471,15 +497,7 @@ export function reportNotes(reports: SourceReport[], page = 1): string[] {
       // Where wordings were derived and sent, the shorter wording and the other
       // spelling have already been tried, and offering them as the next move
       // would send a caller after a search this answer already holds.
-      notes.push(
-        pastTheRows
-          ? `${report.name} answered and returned no row on page ${page}. Its rows stop before this page, which says nothing about the wording or about what it holds: read page 1 for the rows it did return.`
-          : report.queries.filter((entry) => entry.ran).length > 1
-            ? `${report.name} answered and offered nothing under this wording, nor under any wording derived from it. That is a statement about those wordings as much as about the corpus.`
-            : `${report.name} answered and offered nothing under this wording. That is a statement about ` +
-              "the wording as much as about the corpus: try fewer words, or the spelling a scanner would " +
-              "have produced.",
-      );
+      notes.push(whyThisArchiveOfferedNothing(report, page, pastTheRows));
     }
     if (report.count === 0 && report.skipped > 0) {
       // Every row it sent was unreadable, so this answer establishes nothing
@@ -547,7 +565,9 @@ export function nonWordCharacters(query: string): string[] {
  * their code points, since one of them can be invisible where this is read.
  */
 export function nonWordCharactersNote(found: readonly string[]): string | null {
-  if (found.length === 0) return null;
+  if (found.length === 0) {
+    return null;
+  }
   const named = found.map((character) => `"${character}" (${codePointOf(character)})`).join(", ");
   const one = found.length === 1;
   return (
@@ -578,7 +598,9 @@ export function queryNotes(reports: SourceReport[]): string[] {
 
   for (const report of reports) {
     const sent = report.queries.filter((entry) => entry.ran);
-    if (sent.length === 0) continue;
+    if (sent.length === 0) {
+      continue;
+    }
 
     const contributed = sent.slice(1).some((entry) => (entry.added ?? 0) > 0);
     const refused = sent.some((entry) => entry.error !== null);
@@ -588,8 +610,12 @@ export function queryNotes(reports: SourceReport[]): string[] {
     // nothing a reader has to know to read it. They stay in 'queries', where a
     // caller checking how the answer was built will find them, rather than in
     // the block, where they would push out a sentence that does qualify it.
-    if (!contributed && !refused && !emptyAsAsked) continue;
-    if (contributed) unioned = true;
+    if (!contributed && !refused && !emptyAsAsked) {
+      continue;
+    }
+    if (contributed) {
+      unioned = true;
+    }
 
     // The words as asked open the line of every archive and open the block
     // above it, so they are named rather than quoted a third time. The derived
@@ -848,7 +874,9 @@ export function roomForBody(options: OkOptions = {}): number {
 }
 
 export function truncate(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text;
+  if (text.length <= maxChars) {
+    return text;
+  }
   const kept = text.slice(0, Math.max(0, maxChars - 1)).trimEnd();
   // A passage an archive already elided ends on this mark, and a second one
   // beside it reads as two cuts where there was one.
@@ -863,7 +891,9 @@ export function truncate(text: string, maxChars: number): string {
  * and crediting it would say it had.
  */
 export function creditLine(contributors: Array<{ attribution: string; url?: string }>): string {
-  if (contributors.length === 0) return "No archive contributed to this answer.";
+  if (contributors.length === 0) {
+    return "No archive contributed to this answer.";
+  }
   const names = contributors.map((entry) =>
     entry.url ? `${entry.attribution} — ${quoteForeign(entry.url)}` : entry.attribution,
   );

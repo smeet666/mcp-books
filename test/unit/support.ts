@@ -347,7 +347,9 @@ export function fakeBnf(options: FakeBnfSide = {}): BnfReader {
       };
     },
     async searchWorks() {
-      if (options.fail) throw options.fail;
+      if (options.fail) {
+        throw options.fail;
+      }
       return {
         data: { rows: options.rows ?? bnfWorkRows, hasMore: options.hasMore ?? true },
         cached: options.cached ?? false,
@@ -355,8 +357,12 @@ export function fakeBnf(options: FakeBnfSide = {}): BnfReader {
       };
     },
     async getWork() {
-      if (options.fail) throw options.fail;
-      if (options.failRecord) throw options.failRecord;
+      if (options.fail) {
+        throw options.fail;
+      }
+      if (options.failRecord) {
+        throw options.failRecord;
+      }
       return {
         data: options.record ?? bnfWorkRecord,
         cached: options.cached ?? false,
@@ -392,7 +398,9 @@ export interface FakeOptions {
 export function fakeArchive(options: NonNullable<FakeOptions["archive"]> = {}): ArchiveReader {
   return {
     async searchInside() {
-      if (options.fail) throw options.fail;
+      if (options.fail) {
+        throw options.fail;
+      }
       return {
         data: {
           total: options.insideTotal ?? 1740,
@@ -402,15 +410,21 @@ export function fakeArchive(options: NonNullable<FakeOptions["archive"]> = {}): 
       };
     },
     async searchItems() {
-      if (options.fail) throw options.fail;
+      if (options.fail) {
+        throw options.fail;
+      }
       return {
         data: { total: options.itemTotal ?? 2529, items: options.rows ?? archiveItemRows },
         cached: options.cached ?? false,
       };
     },
     async getItem() {
-      if (options.fail) throw options.fail;
-      if (options.failRecord) throw options.failRecord;
+      if (options.fail) {
+        throw options.fail;
+      }
+      if (options.failRecord) {
+        throw options.failRecord;
+      }
       return { data: options.record ?? archiveRecord, cached: options.cached ?? false };
     },
   };
@@ -425,7 +439,9 @@ export function fakeLoc(options: NonNullable<FakeOptions["loc"]> = {}): LocReade
   });
   return {
     async searchNewspapers() {
-      if (options.fail) throw options.fail;
+      if (options.fail) {
+        throw options.fail;
+      }
       return {
         data: {
           paging: paging(options.insideTotal ?? 86_314),
@@ -435,7 +451,9 @@ export function fakeLoc(options: NonNullable<FakeOptions["loc"]> = {}): LocReade
       };
     },
     async searchItems() {
-      if (options.fail) throw options.fail;
+      if (options.fail) {
+        throw options.fail;
+      }
       return {
         data: {
           paging: paging(options.itemTotal ?? 1608),
@@ -445,8 +463,12 @@ export function fakeLoc(options: NonNullable<FakeOptions["loc"]> = {}): LocReade
       };
     },
     async getItem() {
-      if (options.fail) throw options.fail;
-      if (options.failRecord) throw options.failRecord;
+      if (options.fail) {
+        throw options.fail;
+      }
+      if (options.failRecord) {
+        throw options.failRecord;
+      }
       return { data: options.record ?? locRecord, cached: options.cached ?? false };
     },
   };
@@ -570,7 +592,9 @@ export function textOf(result: { content: Array<{ text: string }> }): string {
 export function payloadOf<T = Record<string, unknown>>(result: {
   structuredContent?: Record<string, unknown>;
 }): T {
-  if (!result.structuredContent) throw new Error("the tool returned no structured content");
+  if (!result.structuredContent) {
+    throw new Error("the tool returned no structured content");
+  }
   return result.structuredContent as T;
 }
 
@@ -615,6 +639,8 @@ export function reportFor(
   source: string,
 ): Record<string, unknown> {
   const found = payload.per_source.find((report) => report.source === source);
-  if (!found) throw new Error(`no report for ${source}`);
+  if (!found) {
+    throw new Error(`no report for ${source}`);
+  }
   return found as Record<string, unknown>;
 }

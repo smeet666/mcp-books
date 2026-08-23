@@ -62,7 +62,9 @@ describe("what the server offers", () => {
   });
 
   it("names every tool in the guidance a model reads first", () => {
-    for (const name of TOOLS) expect(INSTRUCTIONS).toContain(name);
+    for (const name of TOOLS) {
+      expect(INSTRUCTIONS).toContain(name);
+    }
   });
 });
 
@@ -120,7 +122,9 @@ describe("the guidance a model reads before choosing", () => {
     const dependencies = Object.keys(
       (manifest as { dependencies?: Record<string, string> }).dependencies ?? {},
     );
-    for (const name of dependencies) expect(INSTRUCTIONS, name).not.toContain(name);
+    for (const name of dependencies) {
+      expect(INSTRUCTIONS, name).not.toContain(name);
+    }
     expect(INSTRUCTIONS).not.toMatch(/\bnpm\b|\bpackage\b/i);
   });
 });
@@ -256,7 +260,7 @@ describe("what each tool takes", () => {
 });
 
 describe("what each tool promises to return", () => {
-  const shapes: Array<[string, z.ZodObject<z.ZodRawShape>]> = [
+  const shapes: [string, z.ZodObject<z.ZodRawShape>][] = [
     ["search_inside", searchInsideOutput],
     ["search_items", searchItemsOutput],
     ["get_item", getItemOutput],

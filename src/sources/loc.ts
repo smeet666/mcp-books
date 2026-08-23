@@ -230,7 +230,9 @@ export function locAdapter(reader: LocReader): SourceAdapter {
         };
       }
 
-      if (LOOKS_LIKE_ADDRESS.test(raw)) return null;
+      if (LOOKS_LIKE_ADDRESS.test(raw)) {
+        return null;
+      }
 
       if (CARRIES_SEPARATOR.test(raw)) {
         return {
@@ -263,7 +265,9 @@ export function locAdapter(reader: LocReader): SourceAdapter {
       for (const raw of list) {
         // Rows past the limit are counted and dropped without being built: an
         // answer asked for five matches has no use for the five thousandth.
-        if (rows.length >= query.limit) break;
+        if (rows.length >= query.limit) {
+          break;
+        }
         const identifier = reference(raw?.identifier);
         const sourceUrl = text(raw?.sourceUrl);
         if (!identifier || !sourceUrl) {
@@ -327,7 +331,9 @@ export function locAdapter(reader: LocReader): SourceAdapter {
       let skipped = 0;
 
       for (const raw of list) {
-        if (rows.length >= query.limit) break;
+        if (rows.length >= query.limit) {
+          break;
+        }
         const identifier = reference(raw?.identifier);
         const sourceUrl = text(raw?.sourceUrl);
         if (!identifier || !sourceUrl) {
@@ -432,9 +438,13 @@ export function locDetail(payload: unknown): ItemDetail {
 
   const context = [...textList(record.partOf)];
   const repository = text(record.repository);
-  if (repository) context.push(`held by ${repository}`);
+  if (repository) {
+    context.push(`held by ${repository}`);
+  }
   const callNumber = text(record.callNumber);
-  if (callNumber) context.push(`call number ${callNumber}`);
+  if (callNumber) {
+    context.push(`call number ${callNumber}`);
+  }
 
   return {
     id: namespacedId(LOC_PROFILE.id, identifier),

@@ -136,7 +136,9 @@ function withGuarantees(config: Config): Config {
 
   const bounded = (value: unknown, fallback: number, min: number, max: number): number => {
     const parsed = Number(value);
-    if (!Number.isFinite(parsed)) return fallback;
+    if (!Number.isFinite(parsed)) {
+      return fallback;
+    }
     return Math.min(max, Math.max(min, parsed));
   };
 
@@ -251,8 +253,42 @@ function moreBeyond(
   limit: number,
   count: number,
 ): boolean | null {
-  if (reportedTotal === null) return null;
+  if (reportedTotal === null) {
+    return null;
+  }
   return reportedTotal > (page - 1) * limit + count;
+}
+
+/**
+ * What an archive's own count counts, once a further wording has been sent.
+ *
+ * The archive counts what one wording matches. Where a later wording brought
+ * back rows of its own, that number counts neither them nor the list they are
+ * in, so the number is kept and what it counts is said beside it.
+ */
+function whatTheCountCounts<T>(attempt: Attempt<T>, acrossWordings: boolean): string | null {
+  if (attempt.reportedTotalMeans === null) {
+    return null;
+  }
+  if (!acrossWordings) {
+    return attempt.reportedTotalMeans;
+  }
+  return `${attempt.reportedTotalMeans}. ${attempt.source.name} reported that count for the wording "${attempt.totalFromQuery}" alone, and rows here came back under a further wording it never counted`;
+}
+
+/** Why a wording this server derived was never sent, when it was not. */
+function whyThisWordingIsHeldBack(
+  index: number,
+  plan: LadderPlan,
+  enoughRowsAlready: boolean,
+): string | null {
+  if (index >= plan.ceiling) {
+    return plan.withheldBecause;
+  }
+  if (index > 0 && enoughRowsAlready) {
+    return "the wordings already sent returned as many rows as were asked for";
+  }
+  return null;
 }
 
 function reportOf<T>(
@@ -267,12 +303,7 @@ function reportOf<T>(
   // in, and reporting it beside them says a count of nothing sits above rows
   // the same archive published. It keeps the number and says what it counts.
   const acrossWordings = attempt.beyondThatWording && attempt.totalFromQuery !== null;
-  const means =
-    attempt.reportedTotalMeans === null
-      ? null
-      : acrossWordings
-        ? `${attempt.reportedTotalMeans}. ${attempt.source.name} reported that count for the wording "${attempt.totalFromQuery}" alone, and rows here came back under a further wording it never counted`
-        : attempt.reportedTotalMeans;
+  const means = whatTheCountCounts(attempt, acrossWordings);
 
   return {
     source: attempt.source.id,
@@ -367,7 +398,9 @@ export function droppedFilters(
  * owed, and the caller is told which way round the bounds go.
  */
 function checkYearRange(yearFrom?: number, yearTo?: number): void {
-  if (yearFrom === undefined || yearTo === undefined || yearFrom <= yearTo) return;
+  if (yearFrom === undefined || yearTo === undefined || yearFrom <= yearTo) {
+    return;
+  }
   throw invalidInput(
     `year_from ${yearFrom} is later than year_to ${yearTo}, so the range names no year and no archive can be narrowed to it.`,
     `Ask for year_from ${yearTo} and year_to ${yearFrom} to search that span, or give one bound and leave the other out.`,
@@ -381,10 +414,14 @@ function filtersAsked(options: {
   sort: SortKey;
 }): CatalogueFilter[] {
   const wanted: CatalogueFilter[] = [];
-  if (options.yearFrom !== undefined || options.yearTo !== undefined) wanted.push("year_range");
+  if (options.yearFrom !== undefined || options.yearTo !== undefined) {
+    wanted.push("year_range");
+  }
   // Relevance is what an archive does when nothing is asked of it, so asking
   // for it narrows nothing and there is nothing to report as dropped.
-  if (options.sort !== "relevance") wanted.push("sort");
+  if (options.sort !== "relevance") {
+    wanted.push("sort");
+  }
   return wanted;
 }
 
@@ -404,7 +441,9 @@ export function interleave<T>(groups: T[][]): T[] {
   for (let index = 0; index < longest; index += 1) {
     for (const group of groups) {
       const row = group[index];
-      if (row !== undefined) merged.push(row);
+      if (row !== undefined) {
+        merged.push(row);
+      }
     }
   }
   return merged;
@@ -457,6 +496,46 @@ interface MediaTypeChoice {
 }
 
 /**
+ * Keep the rows a wording brought back that no earlier wording already did.
+ *
+ * Deduplication is on the identifier this server hands out, which names its
+ * archive: the same string from two archives is two records, and folding them
+ * together would drop one of them. The wording rides on the row from here, so a
+ * reader holding one row can tell how much of the question it answers, and a
+ * row a later wording repeats keeps the wording that first reached it.
+ */
+function keepNewRows<T extends { id: string }>(
+  read: ReadRows<T>,
+  variant: QueryVariant,
+  seen: Set<string>,
+  rows: T[],
+): number {
+  let added = 0;
+
+  for (const row of read.rows) {
+    // Deduplication is on the identifier this server hands out, which
+    // names its archive: the same string from two archives is two
+    // records, and folding them together would drop one of them.
+    if (seen.has(row.id)) {
+      continue;
+    }
+    seen.add(row.id);
+    // The wording rides on the row from here, so a reader holding one row
+    // can tell how much of the question it answers. A row a later wording
+    // repeats keeps the wording that first returned it, which is the one
+    // that reached it.
+    rows.push({
+      ...row,
+      foundByQuery: variant.query,
+      foundByDerivation: variant.derivation,
+    });
+    added += 1;
+  }
+
+  return added;
+}
+
+/**
  * Settle what each archive is asked to look under.
  *
  * The archives file kinds of material under different names, and `texts` and
@@ -488,7 +567,7 @@ export function chooseMediaTypes(
       source,
       because:
         `${source.name} files no kind of material under "${wanted}". It was not asked, because ` +
-        `translating that name into one of its own would search a different set of things than ` +
+        "translating that name into one of its own would search a different set of things than " +
         `the one requested. Its own names are: ${source.mediaTypes.join(", ")}.`,
     });
   }
@@ -867,13 +946,7 @@ export class BooksClient {
     let stopped: string | null = null;
 
     for (const [index, variant] of plan.variants.entries()) {
-      const withheld =
-        stopped ??
-        (index >= plan.ceiling
-          ? plan.withheldBecause
-          : index > 0 && rows.length >= limit
-            ? "the wordings already sent returned as many rows as were asked for"
-            : null);
+      const withheld = stopped ?? whyThisWordingIsHeldBack(index, plan, rows.length >= limit);
 
       if (withheld !== null) {
         queries.push(unsent(variant, withheld));
@@ -882,31 +955,16 @@ export class BooksClient {
 
       try {
         const read = await withDeadline(work(variant.query), this.deadlineFor(source), source);
-        let added = 0;
-        for (const row of read.rows) {
-          // Deduplication is on the identifier this server hands out, which
-          // names its archive: the same string from two archives is two
-          // records, and folding them together would drop one of them.
-          if (seen.has(row.id)) continue;
-          seen.add(row.id);
-          // The wording rides on the row from here, so a reader holding one row
-          // can tell how much of the question it answers. A row a later wording
-          // repeats keeps the wording that first returned it, which is the one
-          // that reached it.
-          rows.push({
-            ...row,
-            foundByQuery: variant.query,
-            foundByDerivation: variant.derivation,
-          });
-          added += 1;
+        const added = keepNewRows(read, variant, seen, rows);
+        if (first !== null && added > 0) {
+          beyondThatWording = true;
         }
-        if (first !== null && added > 0) beyondThatWording = true;
+        cached = cached || read.cached;
         if (read.skipped > 0) {
           this.logger.warn(
             `${source.name} sent ${read.skipped} row(s) this server could not read; they were left out.`,
           );
         }
-        if (read.cached) cached = true;
         // The rows in hand are counted the same way whether they were just
         // read or kept from an earlier read, so the count keeps one shape. What
         // an earlier read dropped before keeping the rest is nobody's count,
@@ -947,7 +1005,9 @@ export class BooksClient {
         // question. A wording this server derived failing afterwards is a
         // failure of that wording, and reporting it as an archive that did not
         // answer would throw away rows the archive did give.
-        if (first === null) error = failure;
+        if (first === null) {
+          error = failure;
+        }
         stopped = `${source.name} did not answer the wording before this one`;
       }
     }
@@ -999,6 +1059,10 @@ function boundedLimit(limit: number): number {
 /** The capabilities the registered archives answer between them. */
 export function capabilitiesOf(sources: readonly SourceAdapter[]): Set<Capability> {
   const found = new Set<Capability>();
-  for (const source of sources) for (const answer of source.answers) found.add(answer);
+  for (const source of sources) {
+    for (const answer of source.answers) {
+      found.add(answer);
+    }
+  }
   return found;
 }

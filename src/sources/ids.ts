@@ -103,7 +103,9 @@ export function resolveId(rawId: string, sources: readonly SourceAdapter[]): Res
 
   for (const source of sources) {
     const prefix = `${source.id}${SEPARATOR}`;
-    if (!trimmed.toLowerCase().startsWith(prefix.toLowerCase())) continue;
+    if (!trimmed.toLowerCase().startsWith(prefix.toLowerCase())) {
+      continue;
+    }
     const reference = trimmed.slice(prefix.length).trim();
     if (reference === "") {
       throw invalidInput(
@@ -157,8 +159,10 @@ export function resolveId(rawId: string, sources: readonly SourceAdapter[]): Res
 /** Archives named the way a sentence names them. */
 function names(sources: readonly { name: string }[]): string {
   const all = sources.map((source) => source.name);
-  if (all.length <= 1) return all.join("");
-  return `${all.slice(0, -1).join(", ")} and ${all[all.length - 1]}`;
+  if (all.length <= 1) {
+    return all.join("");
+  }
+  return `${all.slice(0, -1).join(", ")} and ${all.at(-1)}`;
 }
 
 /** An identifier of the shape this server hands out, for a hint. */

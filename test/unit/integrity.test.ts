@@ -49,7 +49,9 @@ describe("a page number the index does not hold", () => {
     const fromArchive = payload.hits.filter((hit) => hit.source === "archive");
 
     expect(fromArchive.length).toBeGreaterThan(0);
-    for (const hit of fromArchive) expect(hit.page_number).toBeNull();
+    for (const hit of fromArchive) {
+      expect(hit.page_number).toBeNull();
+    }
   });
 
   it("is a real leaf on the archive that publishes one", async () => {
@@ -57,7 +59,9 @@ describe("a page number the index does not hold", () => {
     const fromLoc = payload.hits.filter((hit) => hit.source === "loc");
 
     expect(fromLoc.length).toBeGreaterThan(0);
-    for (const hit of fromLoc) expect(typeof hit.page_number).toBe("number");
+    for (const hit of fromLoc) {
+      expect(typeof hit.page_number).toBe("number");
+    }
   });
 
   it("says which archive holds no leaf, so the null can be read", async () => {

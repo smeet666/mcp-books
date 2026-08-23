@@ -228,7 +228,9 @@ export function bnfAdapter(reader: BnfReader): SourceAdapter {
       let skipped = 0;
 
       for (const raw of list) {
-        if (rows.length >= query.limit) break;
+        if (rows.length >= query.limit) {
+          break;
+        }
         const identifier = reference(raw?.id);
         const sourceUrl = text(raw?.sourceUrl);
         if (!identifier || !sourceUrl) {
@@ -296,7 +298,9 @@ function creditFor(retrievedAt: string): string {
 
 /** Everyone the record credits with a work, in the words the record uses. */
 function creditedWith(creators: unknown): string | null {
-  if (!Array.isArray(creators)) return null;
+  if (!Array.isArray(creators)) {
+    return null;
+  }
   const named = creators
     .map((entry) => text((entry as Partial<BnfCreator> | null)?.name))
     .filter((name): name is string => name !== null);
@@ -344,7 +348,9 @@ export function bnfDetail(payload: unknown, retrievedAt: string): ItemDetail {
     (form) => `filed under the form "${form}", a term in this catalogue's own vocabulary`,
   );
   const catalogueUrl = text(record.catalogueUrl);
-  if (catalogueUrl) context.push(`also catalogued at ${catalogueUrl}`);
+  if (catalogueUrl) {
+    context.push(`also catalogued at ${catalogueUrl}`);
+  }
 
   return {
     id: namespacedId(BNF_PROFILE.id, identifier),
