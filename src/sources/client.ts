@@ -259,6 +259,38 @@ function moreBeyond(
   return reportedTotal > (page - 1) * limit + count;
 }
 
+/**
+ * What an archive's own count counts, once a further wording has been sent.
+ *
+ * The archive counts what one wording matches. Where a later wording brought
+ * back rows of its own, that number counts neither them nor the list they are
+ * in, so the number is kept and what it counts is said beside it.
+ */
+function whatTheCountCounts<T>(attempt: Attempt<T>, acrossWordings: boolean): string | null {
+  if (attempt.reportedTotalMeans === null) {
+    return null;
+  }
+  if (!acrossWordings) {
+    return attempt.reportedTotalMeans;
+  }
+  return `${attempt.reportedTotalMeans}. ${attempt.source.name} reported that count for the wording "${attempt.totalFromQuery}" alone, and rows here came back under a further wording it never counted`;
+}
+
+/** Why a wording this server derived was never sent, when it was not. */
+function whyThisWordingIsHeldBack(
+  index: number,
+  plan: LadderPlan,
+  enoughRowsAlready: boolean,
+): string | null {
+  if (index >= plan.ceiling) {
+    return plan.withheldBecause;
+  }
+  if (index > 0 && enoughRowsAlready) {
+    return "the wordings already sent returned as many rows as were asked for";
+  }
+  return null;
+}
+
 function reportOf<T>(
   attempt: Attempt<T>,
   count: number,
@@ -271,12 +303,7 @@ function reportOf<T>(
   // in, and reporting it beside them says a count of nothing sits above rows
   // the same archive published. It keeps the number and says what it counts.
   const acrossWordings = attempt.beyondThatWording && attempt.totalFromQuery !== null;
-  const means =
-    attempt.reportedTotalMeans === null
-      ? null
-      : acrossWordings
-        ? `${attempt.reportedTotalMeans}. ${attempt.source.name} reported that count for the wording "${attempt.totalFromQuery}" alone, and rows here came back under a further wording it never counted`
-        : attempt.reportedTotalMeans;
+  const means = whatTheCountCounts(attempt, acrossWordings);
 
   return {
     source: attempt.source.id,
@@ -879,13 +906,7 @@ export class BooksClient {
     let stopped: string | null = null;
 
     for (const [index, variant] of plan.variants.entries()) {
-      const withheld =
-        stopped ??
-        (index >= plan.ceiling
-          ? plan.withheldBecause
-          : index > 0 && rows.length >= limit
-            ? "the wordings already sent returned as many rows as were asked for"
-            : null);
+      const withheld = stopped ?? whyThisWordingIsHeldBack(index, plan, rows.length >= limit);
 
       if (withheld !== null) {
         queries.push(unsent(variant, withheld));

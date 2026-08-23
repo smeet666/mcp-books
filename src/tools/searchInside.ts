@@ -34,6 +34,53 @@ import {
 } from "./shared.js";
 import type { ToolResult } from "./shared.js";
 
+/** How many of the matches in hand carry no machine-read text, said as a subject. */
+function howManyCarryNoText(withoutText: number, total: number): string {
+  if (withoutText < total) {
+    return `${withoutText} of the ${total} matches here`;
+  }
+  if (total === 1) {
+    return "The one match in this answer";
+  }
+  return "Every match in this answer";
+}
+
+/**
+ * The order the matches are in, and what no order could be.
+ *
+ * Nothing ranks the archives against each other and nothing orders them by
+ * date: they measure a year on different things, so the only order this server
+ * can describe is the one it imposed.
+ */
+function howTheMatchesAreOrdered(contributed: ReadonlyArray<{ name: string }>): string {
+  if (contributed.length > 1) {
+    return "One match from each archive in turn, in the order each archive returned them. Nothing ranks them against each other, and nothing orders them by date: the archives measure a year on different things.";
+  }
+  if (contributed.length === 1) {
+    return `Every match came from ${contributed[0]?.name}, in the order it returned them.`;
+  }
+  return "No archive contributed a match.";
+}
+
+/**
+ * What a row says about the leaf a match sits on.
+ *
+ * An index that publishes no leaf at all and a match whose leaf went unstated
+ * are different silences, and only the first is a property of the archive.
+ */
+function leafOf(
+  hit: { page_number: number | null; source: string },
+  profiles: Map<string, { publishesPageNumber?: boolean }>,
+): string {
+  if (hit.page_number !== null) {
+    return `· page ${hit.page_number}`;
+  }
+  if (profiles.get(hit.source)?.publishesPageNumber === false) {
+    return "· this index holds no page number";
+  }
+  return "· no page number given for this match";
+}
+
 const SOURCE_VALUES = SOURCE_IDS as unknown as [string, ...string[]];
 
 /** The last page this tool will fetch, matching the ceiling on `page`. */
@@ -251,12 +298,7 @@ export async function runSearchInside(
     // the block had no room for.
     const withoutText = hits.filter((hit) => hit.excerpts.length === 0).length;
     if (withoutText > 0) {
-      const which =
-        withoutText < hits.length
-          ? `${withoutText} of the ${hits.length} matches here`
-          : hits.length === 1
-            ? "The one match in this answer"
-            : "Every match in this answer";
+      const which = howManyCarryNoText(withoutText, hits.length);
       notes.push(
         `${which} came back with no machine-read text, so nothing here quotes ${withoutText === 1 ? "it" : "them"}: follow source_url to read the page.`,
       );
@@ -287,11 +329,7 @@ export async function runSearchInside(
     }
 
     const order = [
-      contributed.length > 1
-        ? "One match from each archive in turn, in the order each archive returned them. Nothing ranks them against each other, and nothing orders them by date: the archives measure a year on different things."
-        : contributed.length === 1
-          ? `Every match came from ${contributed[0]?.name}, in the order it returned them.`
-          : "No archive contributed a match.",
+      howTheMatchesAreOrdered(contributed),
       merged.reports.some((report) => report.queries.filter((entry) => entry.ran).length > 1)
         ? "An archive asked more than one wording has its matches in the order those wordings were sent, which is this server's own order over what it received and no archive's judgement of relevance."
         : "",
@@ -387,11 +425,7 @@ function renderBody(
       hit.year === null ? "" : `(${hit.year})`,
       hit.creator ? `· ${quoteForeign(hit.creator)}` : "",
       `· ${quoteForeign(hit.source_name)}`,
-      hit.page_number === null
-        ? profiles.get(hit.source)?.publishesPageNumber === false
-          ? "· this index holds no page number"
-          : "· no page number given for this match"
-        : `· page ${hit.page_number}`,
+      leafOf(hit, profiles),
       hit.published_on ? `· ${quoteForeign(hit.published_on)}` : "",
       hit.inside_container && hit.matched_file ? `· in ${quoteForeign(hit.matched_file)}` : "",
     ]

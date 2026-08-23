@@ -17,6 +17,31 @@ import { strictInput } from "./arguments.js";
 import { creditLine, ok, quoteForeign, rightsSchema, toToolError, truncate } from "./shared.js";
 import type { ToolResult } from "./shared.js";
 
+/** The date a record states, in its own words where it wrote any. */
+function datedAs(payload: { date?: string | null; year?: number | null }): string {
+  if (payload.date) {
+    return quoteForeign(payload.date);
+  }
+  return payload.year === null || payload.year === undefined ? "" : String(payload.year);
+}
+
+/**
+ * Where a slice of prose can be cut without splitting what a reader is holding.
+ *
+ * A line break is preferred to a space, and both only past the halfway mark: a
+ * break in the first few characters would hand back a fragment rather than a
+ * passage, and the whole slice is better than that.
+ */
+function lastBreakIn(slice: string, line: number, space: number, maxChars: number): number {
+  if (line > maxChars / 2) {
+    return line;
+  }
+  if (space > maxChars / 2) {
+    return space;
+  }
+  return slice.length;
+}
+
 /** Parts of a record a caller opts into. A full record is a lot of text. */
 export const SECTIONS = ["description", "subjects", "copies", "context"] as const;
 export type Section = (typeof SECTIONS)[number];
@@ -269,7 +294,7 @@ export async function runGetItem(client: BooksClient, args: GetItemArgs): Promis
       source_url: item.sourceUrl,
       attribution: item.attribution,
       identifier_provisional: item.identifierProvisional,
-      description: wanted.has("description") ? (window.text === "" ? null : window.text) : null,
+      description: wanted.has("description") && window.text !== "" ? window.text : null,
       description_means: profile?.descriptionMeans ?? null,
       notes: wanted.has("description") ? item.notes : [],
       subjects: wanted.has("subjects") ? item.subjects : [],
@@ -290,11 +315,7 @@ export async function runGetItem(client: BooksClient, args: GetItemArgs): Promis
       quoteForeign(payload.source_url),
       [
         payload.creator ? quoteForeign(payload.creator) : "",
-        payload.date
-          ? quoteForeign(payload.date)
-          : payload.year === null
-            ? ""
-            : String(payload.year),
+        datedAs(payload),
         payload.media_type ? quoteForeign(payload.media_type) : "",
       ]
         .filter(Boolean)
@@ -382,7 +403,7 @@ export function pageProse(
     const slice = prose.slice(offset, end);
     const line = slice.lastIndexOf("\n");
     const space = slice.lastIndexOf(" ");
-    const boundary = line > maxChars / 2 ? line : space > maxChars / 2 ? space : slice.length;
+    const boundary = lastBreakIn(slice, line, space, maxChars);
     cut = offset + boundary;
   }
 

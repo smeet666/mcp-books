@@ -30,6 +30,110 @@ import {
   toToolError,
 } from "./shared.js";
 import type { ToolResult } from "./shared.js";
+import type { SourceReport } from "../types.js";
+
+/** What one archive's own report contradicts about an empty list, if anything. */
+function whatThisArchiveContradicts(report: SourceReport): string[] {
+  if (report.skipped > 0) {
+    return [`${report.name} sent ${report.skipped} row(s) this server could not read`];
+  }
+  if ((report.reportedTotal ?? 0) > 0) {
+    return [`${report.name} counted ${report.reportedTotal} match(es) and returned none of them`];
+  }
+  return [];
+}
+
+/**
+ * Why no row reached the list, when every archive answered.
+ *
+ * Three silences, and a caller acts on each differently: the rows stop before
+ * this page, the archives counted matches they did not hand over, or none of
+ * them holds anything under this wording. Only the last is the wording's fault.
+ */
+function whyNoRowReachedThisList(page: number, contradicted: readonly string[]): string {
+  if (page > 1) {
+    return `Every archive answered and none returned a row on page ${page}. Their rows stop before it, so this says nothing about the wording: read an earlier page for what they did return.`;
+  }
+  if (contradicted.length > 0) {
+    return `Every archive answered and no row reached this list, which is not the same as none holding anything: ${contradicted.join("; ")}. Nothing here is evidence about what they hold, and the wording is not what to change.`;
+  }
+  return "Every archive answered and none holds anything under this wording. Try fewer words, a creator's name, or a different kind of material.";
+}
+
+/**
+ * The order the rows are in, and what no order could be.
+ *
+ * No score orders the archives against each other and no date order spans them,
+ * so the only order this server can describe is the one it imposed.
+ */
+function howTheRowsAreOrdered(contributed: ReadonlyArray<{ name: string }>): string {
+  if (contributed.length > 1) {
+    return "One row from each archive in turn, in the order each archive returned them. No score orders them against each other and no date order spans them.";
+  }
+  if (contributed.length === 1) {
+    return `Every row came from ${contributed[0]?.name}, in the order it returned them.`;
+  }
+  return "No archive contributed a row.";
+}
+
+/**
+ * What an empty answer amounts to.
+ *
+ * No archive answering and every archive holding nothing are different
+ * statements about the world, and a caller cannot tell them apart from a list
+ * with nothing in it.
+ */
+function nothingCameBack(answeredCount: number, query: string): string {
+  if (answeredCount === 0) {
+    return `No archive answered for ${quoteForeign(query)}, so nothing here says whether such a record exists.`;
+  }
+  return `Nothing came back for ${quoteForeign(query)}.`;
+}
+
+/**
+ * Which fields each catalogue matched the words against.
+ *
+ * The same words put to two archives are two questions when one reads titles,
+ * creators and subjects and another reads titles alone: a creator's name
+ * reaches the second as a subject, and comes back as the books written about
+ * that person.
+ */
+function notesOnWhatEachCatalogueReads(
+  answered: readonly SourceReport[],
+  profiles: Map<string, SourceProfile>,
+): string[] {
+  const notes: string[] = [];
+
+  const fields = answered.map((report) => ({
+    name: report.name,
+    on: profiles.get(report.source)?.searchesOn ?? null,
+  }));
+  const stated = fields.filter((entry): entry is { name: string; on: string } => entry.on !== null);
+  if (stated.length > 1 && new Set(stated.map((entry) => entry.on)).size > 1) {
+    notes.push(
+      `The archives matched these words against different fields: ${stated
+        .map((entry) => `${entry.name} on ${entry.on}`)
+        .join("; ")}.`,
+    );
+  }
+
+  // What follows from a narrow index is said whenever that archive answered,
+  // and not only where another archive stood beside it to make the contrast
+  // visible. An answer built entirely from such an index is the one where a
+  // reader is least able to see what was and was not searched.
+  for (const report of answered) {
+    const caveat = profiles.get(report.source)?.searchesOnCaveat;
+    if (caveat) {
+      notes.push(`${report.name} ${caveat}`);
+    }
+  }
+
+  // A catalogue that scores the words rather than requiring them all answers
+  // a long query with the records it ranks highest, so a row can carry some
+  // of the words and none of the rest.
+
+  return notes;
+}
 
 const MEDIA_TYPE_VALUES = MEDIA_TYPES as unknown as [string, ...string[]];
 const SORT_VALUES = SORT_KEYS as unknown as [SortKey, ...SortKey[]];
@@ -308,35 +412,8 @@ export async function runSearchItems(
     // whole record and another reads a title. A caller who takes them for one
     // question reads an archive's silence as a corpus holding nothing, when it
     // holds the thing under a field that was never searched.
-    const fields = answered.map((report) => ({
-      name: report.name,
-      on: profiles.get(report.source)?.searchesOn ?? null,
-    }));
-    const stated = fields.filter(
-      (entry): entry is { name: string; on: string } => entry.on !== null,
-    );
-    if (stated.length > 1 && new Set(stated.map((entry) => entry.on)).size > 1) {
-      notes.push(
-        `The archives matched these words against different fields: ${stated
-          .map((entry) => `${entry.name} on ${entry.on}`)
-          .join("; ")}.`,
-      );
-    }
+    notes.push(...notesOnWhatEachCatalogueReads(answered, profiles));
 
-    // What follows from a narrow index is said whenever that archive answered,
-    // and not only where another archive stood beside it to make the contrast
-    // visible. An answer built entirely from such an index is the one where a
-    // reader is least able to see what was and was not searched.
-    for (const report of answered) {
-      const caveat = profiles.get(report.source)?.searchesOnCaveat;
-      if (caveat) {
-        notes.push(`${report.name} ${caveat}`);
-      }
-    }
-
-    // A catalogue that scores the words rather than requiring them all answers
-    // a long query with the records it ranks highest, so a row can carry some
-    // of the words and none of the rest.
     for (const report of contributed) {
       if (profiles.get(report.source)?.catalogueRequiresEveryWord !== false) {
         continue;
@@ -395,13 +472,7 @@ export async function runSearchItems(
       // its catalogue holds nothing. Calling that an absence reports a failure
       // of this server as a fact about a corpus, and pointing the caller at
       // their own wording sends them to rewrite a question that was answered.
-      const contradicted = answered.flatMap((report) =>
-        report.skipped > 0
-          ? [`${report.name} sent ${report.skipped} row(s) this server could not read`]
-          : (report.reportedTotal ?? 0) > 0
-            ? [`${report.name} counted ${report.reportedTotal} match(es) and returned none of them`]
-            : [],
-      );
+      const contradicted = answered.flatMap(whatThisArchiveContradicts);
 
       // An empty page beyond the first is where the rows stop, which is a fact
       // about how far the list runs. Reading it as an empty catalogue would
@@ -410,21 +481,11 @@ export async function runSearchItems(
       // It opens the notes rather than closing them: on an answer holding no
       // rows this sentence is the answer, and a block with room for only some
       // of its notes drops from the end.
-      notes.unshift(
-        args.page > 1
-          ? `Every archive answered and none returned a row on page ${args.page}. Their rows stop before it, so this says nothing about the wording: read an earlier page for what they did return.`
-          : contradicted.length > 0
-            ? `Every archive answered and no row reached this list, which is not the same as none holding anything: ${contradicted.join("; ")}. Nothing here is evidence about what they hold, and the wording is not what to change.`
-            : "Every archive answered and none holds anything under this wording. Try fewer words, a creator's name, or a different kind of material.",
-      );
+      notes.unshift(whyNoRowReachedThisList(args.page, contradicted));
     }
 
     const order = [
-      contributed.length > 1
-        ? "One row from each archive in turn, in the order each archive returned them. No score orders them against each other and no date order spans them."
-        : contributed.length === 1
-          ? `Every row came from ${contributed[0]?.name}, in the order it returned them.`
-          : "No archive contributed a row.",
+      howTheRowsAreOrdered(contributed),
       merged.reports.some((report) => report.queries.filter((entry) => entry.ran).length > 1)
         ? "An archive asked more than one wording has its rows in the order those wordings were sent, which is this server's own order over what it received and no archive's judgement of relevance."
         : "",
@@ -440,9 +501,7 @@ export async function runSearchItems(
     const body =
       items.length > 0
         ? renderRows(items, args.query, notes)
-        : answered.length === 0
-          ? `No archive answered for ${quoteForeign(args.query)}, so nothing here says whether such a record exists.`
-          : `Nothing came back for ${quoteForeign(args.query)}.`;
+        : nothingCameBack(answered.length, args.query);
 
     return ok(
       {
