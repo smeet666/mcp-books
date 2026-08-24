@@ -8,6 +8,7 @@
  * translation that would search something else.
  */
 
+import type { SourceReport } from "../types.js";
 import { z } from "zod";
 import { MEDIA_TYPES, SORT_KEYS, SOURCE_IDS, SOURCE_PROFILES } from "../sources/client.js";
 import type { BooksClient, SortKey } from "../sources/client.js";
@@ -171,8 +172,6 @@ function notesOnTheOrderAsked(
 
   return notes;
 }
-
-import type { SourceReport } from "../types.js";
 
 /** What one archive's own report contradicts about an empty list, if anything. */
 function whatThisArchiveContradicts(report: SourceReport): string[] {

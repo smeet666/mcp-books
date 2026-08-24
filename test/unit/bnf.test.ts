@@ -236,7 +236,7 @@ describe("a row describing a work rather than a copy", () => {
 
   it("leaves that mark null on an archive that mints one kind of identifier", async () => {
     const payload = await items();
-    for (const row of payload.items.filter((row) => row.source !== "bnf")) {
+    for (const row of payload.items.filter((one) => one.source !== "bnf")) {
       expect(row.identifier_provisional).toBeNull();
     }
   });

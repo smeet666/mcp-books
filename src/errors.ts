@@ -38,6 +38,8 @@ export interface ErrorDetails {
   /** The address that produced the failure, for a bug report. */
   url?: string;
   status?: number;
+  /** What was raised underneath, kept for the bug report the hint asks for. */
+  cause?: unknown;
 }
 
 export class BooksError extends Error {
@@ -45,7 +47,7 @@ export class BooksError extends Error {
   readonly details: ErrorDetails;
 
   constructor(code: ErrorCode, message: string, details: ErrorDetails = {}) {
-    super(message);
+    super(message, details.cause === undefined ? undefined : { cause: details.cause });
     this.name = "BooksError";
     this.code = code;
     this.details = details;
@@ -63,6 +65,25 @@ export const rateLimited = (message: string, details?: ErrorDetails) =>
     hint: "Wait a moment and ask again. This says nothing about whether the record exists.",
     ...details,
   });
+
+/**
+ * A read that failed on one archive, named with the archive and what was asked.
+ *
+ * The archive and the moment travel with the failure, so a caller never has to
+ * work out whether the question or the answer was the problem.
+ */
+export function failedRead(
+  known: BooksError,
+  asked: { source: string; reference: string },
+  hint: string | undefined,
+  cause: unknown,
+): BooksError {
+  return new BooksError(
+    known.code,
+    `${asked.source} was asked for "${asked.reference}" and the read failed: ${known.message}`,
+    { ...known.details, ...(hint === undefined ? {} : { hint }), cause },
+  );
+}
 
 export const parseFailure = (message: string, details?: ErrorDetails) =>
   new BooksError("parse_failure", message, {
