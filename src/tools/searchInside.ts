@@ -362,7 +362,11 @@ export async function runSearchInside(
       0,
     );
 
-    const body = renderBody(hits, args, merged.asked, answered.length, notes, profiles);
+    const body = renderBody(hits, args, notes, {
+      asked: merged.asked,
+      answered: answered.length,
+      profiles,
+    });
 
     return ok(
       {
@@ -421,11 +425,10 @@ export function insideContext(profile: SourceProfile | undefined, asked: boolean
 function renderBody(
   hits: z.infer<typeof hitSchema>[],
   args: SearchInsideArgs,
-  asked: number,
-  answered: number,
   notes: string[],
-  profiles: Map<string, SourceProfile>,
+  reach: { asked: number; answered: number; profiles: Map<string, SourceProfile> },
 ): string {
+  const { asked, answered, profiles } = reach;
   if (hits.length === 0) {
     if (answered === 0) {
       return `No archive answered for ${quoteForeign(args.query)}, so nothing here says whether that phrase was ever printed.`;
