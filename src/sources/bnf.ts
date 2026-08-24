@@ -100,13 +100,13 @@ export interface BnfRead<T> {
 
 /** The part of the catalogue's client this server uses. */
 export interface BnfReader {
-  identify(input: string): BnfEntityId;
-  searchWorks(
+  identify: (input: string) => BnfEntityId;
+  searchWorks: (
     title: string,
     limit: number,
     offset: number,
-  ): Promise<BnfRead<BnfPage<BnfWorkSummary>>>;
-  getWork(id: BnfEntityId): Promise<BnfRead<BnfWorkDetail>>;
+  ) => Promise<BnfRead<BnfPage<BnfWorkSummary>>>;
+  getWork: (id: BnfEntityId) => Promise<BnfRead<BnfWorkDetail>>;
 }
 
 export const BNF_PROFILE: SourceProfile = {
@@ -275,8 +275,8 @@ export function bnfAdapter(reader: BnfReader): SourceAdapter {
       };
     },
 
-    async getItem(reference: string): Promise<ReadDetail> {
-      const outcome = await reader.getWork(reader.identify(reference));
+    async getItem(id: string): Promise<ReadDetail> {
+      const outcome = await reader.getWork(reader.identify(id));
       return { item: bnfDetail(outcome.data, outcome.retrievedAt), cached: outcome.cached };
     },
   };

@@ -78,7 +78,7 @@ export interface ArchiveRead<T> {
 
 /** The part of the Archive's client this server uses. */
 export interface ArchiveReader {
-  searchItems(query: {
+  searchItems: (query: {
     query: string;
     mediaType?: string;
     yearFrom?: number;
@@ -86,13 +86,13 @@ export interface ArchiveReader {
     sort?: "relevance" | "downloads" | "newest" | "oldest" | "title";
     limit: number;
     page: number;
-  }): Promise<ArchiveRead<{ total: number; items: ArchiveItemSummary[] }>>;
-  searchInside(
+  }) => Promise<ArchiveRead<{ total: number; items: ArchiveItemSummary[] }>>;
+  searchInside: (
     query: string,
     limit: number,
     page: number,
-  ): Promise<ArchiveRead<{ total: number; hits: ArchiveInsideHit[] }>>;
-  getItem(identifier: string): Promise<ArchiveRead<ArchiveItemDetail>>;
+  ) => Promise<ArchiveRead<{ total: number; hits: ArchiveInsideHit[] }>>;
+  getItem: (identifier: string) => Promise<ArchiveRead<ArchiveItemDetail>>;
 }
 
 export const ARCHIVE_PROFILE: SourceProfile = {
@@ -209,16 +209,16 @@ export function archiveAdapter(reader: ArchiveReader): SourceAdapter {
     claims(raw: string): Claim | null {
       const address = ITEM_URL.exec(raw);
       if (address) {
-        let reference: string;
+        let own: string;
         try {
-          reference = decodeURIComponent(address[1] ?? "");
+          own = decodeURIComponent(address[1] ?? "");
         } catch {
           // A percent sign opening no escape is the caller's string rather
           // than an archive that failed.
           return null;
         }
         return {
-          reference,
+          reference: own,
           why: "the address is an item on the Internet Archive",
           guess: false,
         };
@@ -352,8 +352,8 @@ export function archiveAdapter(reader: ArchiveReader): SourceAdapter {
       };
     },
 
-    async getItem(reference: string): Promise<ReadDetail> {
-      const outcome = await reader.getItem(reference);
+    async getItem(id: string): Promise<ReadDetail> {
+      const outcome = await reader.getItem(id);
       return { item: archiveDetail(outcome.data), cached: outcome.cached };
     },
   };

@@ -41,7 +41,7 @@ import {
   createLogger,
   loadConfig,
 } from "../config.js";
-import { BooksError, invalidInput, timeout as timedOut, toBooksError } from "../errors.js";
+import { failedRead, invalidInput, timeout as timedOut, toBooksError } from "../errors.js";
 import type {
   Capability,
   CatalogueFilter,
@@ -710,13 +710,13 @@ export class BooksClient {
     const { able, absent } = splitByCapability(chosen, "search_inside");
     const limit = boundedLimit(options.limit);
     const page = Math.max(1, Math.trunc(options.page));
-    const ladder = this.ladderFor(trimmed, { enabled: options.fanOut !== false, page });
+    const ladder = ladderFor(trimmed, { enabled: options.fanOut !== false, page });
 
     const attempts = await Promise.all(
       able.map((source) =>
-        this.askLadder<Hit>(source, ladder, limit, null, (query) =>
+        this.askLadder<Hit>(source, ladder, limit, null, (wording) =>
           source.searchInside({
-            query,
+            query: wording,
             limit,
             page,
             maxExcerptChars: options.maxExcerptChars,
@@ -768,7 +768,7 @@ export class BooksClient {
     const limit = boundedLimit(options.limit);
     const able = byCapability.able.filter((source) => byVocabulary.asked.has(source.id));
     const page = Math.max(1, Math.trunc(options.page));
-    const ladder = this.ladderFor(trimmed, { enabled: options.fanOut !== false, page });
+    const ladder = ladderFor(trimmed, { enabled: options.fanOut !== false, page });
 
     const narrowings = filtersAsked(options);
     const dropped = new Map(able.map((source) => [source.id, droppedFilters(source, narrowings)]));
@@ -777,9 +777,9 @@ export class BooksClient {
       able.map((source) => {
         const mediaType = byVocabulary.asked.get(source.id) ?? null;
         const missing = new Set((dropped.get(source.id) ?? []).map((entry) => entry.filter));
-        return this.askLadder<ItemRow>(source, ladder, limit, mediaType, (query) => {
+        return this.askLadder<ItemRow>(source, ladder, limit, mediaType, (wording) => {
           const request: CatalogueQuery = {
-            query,
+            query: wording,
             mediaType,
             // A narrowing this archive cannot apply is left out of the request
             // rather than sent and ignored, so what it received and what the
@@ -871,46 +871,13 @@ export class BooksClient {
       const known = toBooksError(error);
       // The archive and the moment travel with the failure, so a caller never
       // has to work out whether the question or the answer was the problem.
-      throw new BooksError(
-        known.code,
-        `${read.source.name} was asked for "${read.reference}" and the read failed: ${known.message}`,
-        known.code === "parse_failure"
-          ? { ...known.details, hint: servesNoWholeRecord(read.source.name) }
-          : known.details,
+      throw failedRead(
+        known,
+        { source: read.source.name, reference: read.reference },
+        known.code === "parse_failure" ? servesNoWholeRecord(read.source.name) : undefined,
+        error,
       );
     }
-  }
-
-  /**
-   * The wordings this call will offer each archive, and how many it may send.
-   *
-   * The list is settled once for the whole call rather than per archive, so
-   * every archive is asked the same question in the same words and an answer
-   * holding rows from two of them is not two different questions merged.
-   */
-  private ladderFor(query: string, fanOut: FanOut): LadderPlan {
-    const derived = deriveQueries(query);
-    if (!fanOut.enabled) {
-      return {
-        variants: derived,
-        ceiling: 1,
-        withheldBecause:
-          "fan_out was off, so the words as asked were sent and no wording was derived from them",
-      };
-    }
-    if (fanOut.page > 1) {
-      return {
-        variants: derived,
-        ceiling: 1,
-        withheldBecause:
-          "beyond the first page only the words as asked are sent, because each archive pages each wording on a count of its own",
-      };
-    }
-    return {
-      variants: derived,
-      ceiling: MAX_QUERIES_PER_SOURCE,
-      withheldBecause: `the ceiling of ${MAX_QUERIES_PER_SOURCE} queries to one archive was reached`,
-    };
   }
 
   /**
@@ -1065,4 +1032,36 @@ export function capabilitiesOf(sources: readonly SourceAdapter[]): Set<Capabilit
     }
   }
   return found;
+}
+
+/**
+ * The wordings this call will offer each archive, and how many it may send.
+ *
+ * The list is settled once for the whole call rather than per archive, so
+ * every archive is asked the same question in the same words and an answer
+ * holding rows from two of them is not two different questions merged.
+ */
+function ladderFor(query: string, fanOut: FanOut): LadderPlan {
+  const derived = deriveQueries(query);
+  if (!fanOut.enabled) {
+    return {
+      variants: derived,
+      ceiling: 1,
+      withheldBecause:
+        "fan_out was off, so the words as asked were sent and no wording was derived from them",
+    };
+  }
+  if (fanOut.page > 1) {
+    return {
+      variants: derived,
+      ceiling: 1,
+      withheldBecause:
+        "beyond the first page only the words as asked are sent, because each archive pages each wording on a count of its own",
+    };
+  }
+  return {
+    variants: derived,
+    ceiling: MAX_QUERIES_PER_SOURCE,
+    withheldBecause: `the ceiling of ${MAX_QUERIES_PER_SOURCE} queries to one archive was reached`,
+  };
 }

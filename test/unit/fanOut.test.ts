@@ -391,7 +391,7 @@ describe("the number of requests", () => {
     // what turning the argument on would buy.
     const trace = (reportFor(payload, "archive") as unknown as { queries: QueryTrace[] }).queries;
     expect(trace.filter((entry) => !entry.ran).length).toBeGreaterThan(0);
-    for (const entry of trace.filter((entry) => !entry.ran)) {
+    for (const entry of trace.filter((one) => !one.ran)) {
       expect(entry.not_run_because).toMatch(/fan_out/);
     }
   });

@@ -102,7 +102,7 @@ export interface SourceAdapter extends SourceProfile {
    * string no archive claims is refused instead of being sent somewhere that
    * would answer it with a confident absence.
    */
-  claims(raw: string): Claim | null;
+  claims: (raw: string) => Claim | null;
   /**
    * The spacing this archive's reader is keeping right now, when it says.
    *
@@ -111,10 +111,10 @@ export interface SourceAdapter extends SourceProfile {
    * Reporting the registry's number in either case would announce a promise the
    * running client is not the one keeping.
    */
-  observedPaceMs?(): number | null;
-  searchInside?(query: InsideQuery): Promise<ReadRows<Hit>>;
-  searchItems?(query: CatalogueQuery): Promise<ReadRows<ItemRow>>;
-  getItem?(reference: string): Promise<ReadDetail>;
+  observedPaceMs?: () => number | null;
+  searchInside?: (query: InsideQuery) => Promise<ReadRows<Hit>>;
+  searchItems?: (query: CatalogueQuery) => Promise<ReadRows<ItemRow>>;
+  getItem?: (reference: string) => Promise<ReadDetail>;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -184,8 +184,8 @@ export function reference(value: unknown): string | null {
 }
 
 /** Build the identifier this server hands out for a row from an archive. */
-export function namespacedId(source: SourceId, reference: string): string {
-  return `${source}:${reference}`;
+export function namespacedId(source: SourceId, own: string): string {
+  return `${source}:${own}`;
 }
 
 /**
@@ -254,10 +254,10 @@ export function trimExcerpt(
 }
 
 /** A window that opens and closes on a word wherever one is near the cut. */
-function cutAtSpace(text: string, start: number, maxChars: number): string {
-  const opening = start === 0 ? 0 : text.indexOf(" ", start) + 1 || start;
-  const window = text.slice(opening, opening + maxChars);
-  if (opening + window.length >= text.length) {
+function cutAtSpace(written: string, start: number, maxChars: number): string {
+  const opening = start === 0 ? 0 : written.indexOf(" ", start) + 1 || start;
+  const window = written.slice(opening, opening + maxChars);
+  if (opening + window.length >= written.length) {
     return window.trim();
   }
   const space = window.lastIndexOf(" ");

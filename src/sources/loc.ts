@@ -9,6 +9,7 @@
  * named by its paper, its date and its edition together.
  */
 
+import type { LocClient } from "mcp-libraryofcongress/client";
 import type { Hit, ItemDetail, ItemRow, SourceProfile } from "../types.js";
 import type {
   CatalogueQuery,
@@ -102,28 +103,54 @@ export interface LocRead<T> {
   skipped?: number;
 }
 
+/**
+ * The Library keeps one catalogue per kind of material, and a name outside this
+ * list addresses nothing. The list is the profile's own, so what the profile
+ * publishes and what the client will accept cannot drift apart.
+ */
+const LOC_ROUTES = [
+  "books",
+  "photos",
+  "maps",
+  "audio",
+  "film-and-videos",
+  "manuscripts",
+  "notated-music",
+  "newspapers",
+] as const;
+
+type LocRoute = (typeof LOC_ROUTES)[number];
+
 /** The kind of material the Library searches when a caller names none. */
-const LOC_DEFAULT_MEDIA_TYPE = "books";
+const LOC_DEFAULT_MEDIA_TYPE: LocRoute = "books";
+
+/**
+ * The route a media type names.
+ *
+ * A caller's name that no source files under is dropped before the fan-out asks
+ * anyone, so a name outside the list cannot reach here; the default stands for
+ * the caller who named none.
+ */
+function routeFor(asked: string | null): LocRoute {
+  return LOC_ROUTES.find((one) => one === asked) ?? LOC_DEFAULT_MEDIA_TYPE;
+}
 
 /** The part of the Library's client this server uses. */
 export interface LocReader {
-  searchItems(query: {
-    query: string;
-    format: string;
-    yearFrom?: number;
-    yearTo?: number;
-    sort?: "relevance" | "newest" | "oldest" | "title";
-    onlineOnly: boolean;
-    limit: number;
-    page: number;
-  }): Promise<LocRead<{ paging: LocPaging; records: LocRecordSummary[] }>>;
-  searchNewspapers(
+  // The query is read off the client rather than restated: the Library serves
+  // each kind of material on a route of its own, and a format outside that set
+  // addresses nothing. Restating it as a plain string would let a caller pass
+  // one the client cannot send.
+  searchItems: (
+    query: Parameters<LocClient["searchItems"]>[0],
+  ) => Promise<LocRead<{ paging: LocPaging; records: LocRecordSummary[] }>>;
+  searchNewspapers: (
     query: string,
     limit: number,
     page: number,
     budget: { maxChars: number; maxCount: number },
-  ): Promise<LocRead<{ paging: LocPaging; hits: LocNewspaperHit[] }>>;
-  getItem(identifier: string): Promise<LocRead<LocItemDetail>>;
+  ) => Promise<LocRead<{ paging: LocPaging; hits: LocNewspaperHit[] }>>;
+  getItem: (identifier: string) => Promise<LocRead<LocItemDetail>>;
 }
 
 export const LOC_PROFILE: SourceProfile = {
@@ -149,16 +176,7 @@ export const LOC_PROFILE: SourceProfile = {
   descriptionMeans:
     "the description field of the catalogue record, whose contents follow the kind of material: an account of the thing on a photograph, and on a newspaper the place it was published rather than anything about the paper",
   publishesPageNumber: true,
-  mediaTypes: [
-    "books",
-    "photos",
-    "maps",
-    "audio",
-    "film-and-videos",
-    "manuscripts",
-    "notated-music",
-    "newspapers",
-  ],
+  mediaTypes: [...LOC_ROUTES],
   // The catalogue is one route per kind of material, so a search has to name
   // one. A caller naming none is told which one was read.
   defaultMediaType: LOC_DEFAULT_MEDIA_TYPE,
@@ -222,9 +240,9 @@ export function locAdapter(reader: LocReader): SourceAdapter {
         const rest = decodeOrRaw(site[2] ?? "");
         // A collection is named by its slug alone; the address goes on to a
         // page about the collection, which is not part of what names it.
-        const reference = route === "collections" ? (rest.split("/")[0] ?? rest) : rest;
+        const own = route === "collections" ? (rest.split("/")[0] ?? rest) : rest;
         return {
-          reference,
+          reference: own,
           why: "the address is a record on the Library of Congress",
           guess: false,
         };
@@ -314,7 +332,7 @@ export function locAdapter(reader: LocReader): SourceAdapter {
     async searchItems(query: CatalogueQuery): Promise<ReadRows<ItemRow>> {
       const outcome = await reader.searchItems({
         query: query.query,
-        format: query.mediaType ?? LOC_DEFAULT_MEDIA_TYPE,
+        format: routeFor(query.mediaType),
         ...(query.yearFrom === undefined ? {} : { yearFrom: query.yearFrom }),
         ...(query.yearTo === undefined ? {} : { yearTo: query.yearTo }),
         ...(query.sort === null ? {} : { sort: query.sort }),
@@ -376,8 +394,8 @@ export function locAdapter(reader: LocReader): SourceAdapter {
       };
     },
 
-    async getItem(reference: string): Promise<ReadDetail> {
-      const outcome = await reader.getItem(reference);
+    async getItem(id: string): Promise<ReadDetail> {
+      const outcome = await reader.getItem(id);
       return { item: locDetail(outcome.data), cached: outcome.cached };
     },
   };
