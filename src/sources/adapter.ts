@@ -19,6 +19,10 @@
 import { parseFailure } from "../errors.js";
 import type { Hit, ItemDetail, ItemRow, SourceId, SourceProfile } from "../types.js";
 
+/** What an identifier can never carry: whitespace, control codes and line separators. */
+const CONTROL_CHARACTER = /[\s\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
+const WORD_SEPARATORS = /[^\p{L}\p{N}'-]+/u;
+
 /** What one archive returned for one question. */
 export interface ReadRows<T> {
   rows: T[];
@@ -180,7 +184,7 @@ export function reference(value: unknown): string | null {
   if (found === null) {
     return null;
   }
-  return /[\s\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(found) ? null : found;
+  return CONTROL_CHARACTER.test(found) ? null : found;
 }
 
 /** Build the identifier this server hands out for a row from an archive. */
@@ -202,7 +206,7 @@ export function queryTerms(query: string): string[] {
       terms.push(inner);
     }
   }
-  for (const word of query.replace(/"[^"]*"/g, " ").split(/[^\p{L}\p{N}'-]+/u)) {
+  for (const word of query.replace(/"[^"]*"/g, " ").split(WORD_SEPARATORS)) {
     const lower = word.trim().toLowerCase();
     if (lower.length > 2) {
       terms.push(lower);
