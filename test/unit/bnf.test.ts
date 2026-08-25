@@ -17,6 +17,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import process from "node:process";
 import { INSTRUCTIONS } from "../../src/server.js";
 import { MEDIA_TYPES, SOURCE_IDS } from "../../src/sources/registry.js";
 import { runGetItem } from "../../src/tools/getItem.js";

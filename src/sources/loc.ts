@@ -288,7 +288,7 @@ export function locAdapter(reader: LocReader): SourceAdapter {
         }
         const identifier = reference(raw?.identifier);
         const sourceUrl = text(raw?.sourceUrl);
-        if (!identifier || !sourceUrl) {
+        if (!(identifier && sourceUrl)) {
           skipped += 1;
           continue;
         }
@@ -354,7 +354,7 @@ export function locAdapter(reader: LocReader): SourceAdapter {
         }
         const identifier = reference(raw?.identifier);
         const sourceUrl = text(raw?.sourceUrl);
-        if (!identifier || !sourceUrl) {
+        if (!(identifier && sourceUrl)) {
           skipped += 1;
           continue;
         }

@@ -233,7 +233,7 @@ export function bnfAdapter(reader: BnfReader): SourceAdapter {
         }
         const identifier = reference(raw?.id);
         const sourceUrl = text(raw?.sourceUrl);
-        if (!identifier || !sourceUrl) {
+        if (!(identifier && sourceUrl)) {
           skipped += 1;
           continue;
         }

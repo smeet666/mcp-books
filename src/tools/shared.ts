@@ -610,7 +610,7 @@ export function queryNotes(reports: SourceReport[]): string[] {
     // nothing a reader has to know to read it. They stay in 'queries', where a
     // caller checking how the answer was built will find them, rather than in
     // the block, where they would push out a sentence that does qualify it.
-    if (!contributed && !refused && !emptyAsAsked) {
+    if (!(contributed || refused || emptyAsAsked)) {
       continue;
     }
     if (contributed) {

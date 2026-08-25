@@ -7,6 +7,7 @@
  * narrow it is not, whichever way it arrives.
  */
 
+import process from "node:process";
 import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_USER_AGENT, loadConfig } from "../../src/config.js";
 import { pacingFor } from "../../src/sources/registry.js";

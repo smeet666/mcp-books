@@ -252,7 +252,7 @@ export function archiveAdapter(reader: ArchiveReader): SourceAdapter {
         // hole where the citation belongs.
         const identifier = reference(raw?.identifier);
         const sourceUrl = text(raw?.sourceUrl);
-        if (!identifier || !sourceUrl) {
+        if (!(identifier && sourceUrl)) {
           skipped += 1;
           continue;
         }
@@ -313,7 +313,7 @@ export function archiveAdapter(reader: ArchiveReader): SourceAdapter {
         }
         const identifier = reference(raw?.identifier);
         const sourceUrl = text(raw?.sourceUrl);
-        if (!identifier || !sourceUrl) {
+        if (!(identifier && sourceUrl)) {
           skipped += 1;
           continue;
         }
