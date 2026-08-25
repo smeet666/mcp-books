@@ -161,7 +161,7 @@ judgement of relevance.
 
 ## Install
 
-Node 20 or later.
+Node 24 or later.
 
 ```bash
 npx -y mcp-books
@@ -661,7 +661,7 @@ reçu et jamais un jugement de pertinence d'une archive.
 
 ## Installation
 
-Node 20 ou plus récent.
+Node 24 ou plus récent.
 
 ```bash
 npx -y mcp-books
