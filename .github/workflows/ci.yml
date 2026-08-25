@@ -43,7 +43,10 @@ jobs:
       # free of charge, one of them is a non-profit and the other a public
       # institution, and shared runners have no business adding load to them on
       # every push. The nightly canary is where the real routes are exercised.
-      - run: npm test
+
+      # Three consecutive identical passes is the gate: a suite that varies
+      # between runs is a defect whatever any single run reports.
+      - run: for i in 1 2 3; do npm test || exit 1; done
       - run: npm run build
 
   image:
