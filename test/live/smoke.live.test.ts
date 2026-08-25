@@ -18,6 +18,7 @@
  * and the alarm it raises opens an issue.
  */
 
+import process from "node:process";
 import { describe, expect, it } from "vitest";
 import { BooksClient } from "../../src/sources/client.js";
 import type { ItemDetail, SourceId, SourceReport } from "../../src/types.js";

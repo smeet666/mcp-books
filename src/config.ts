@@ -11,6 +11,7 @@
  * value set here can only make this server more patient than it already is.
  */
 
+import process from "node:process";
 import { PKG_VERSION, REPO_URL } from "./version.js";
 
 export const LOG_LEVELS = ["silent", "error", "info", "debug"] as const;
@@ -82,7 +83,7 @@ function readInteger(
   }
 
   const value = Number(raw);
-  if (!Number.isFinite(value) || !Number.isInteger(value)) {
+  if (!(Number.isFinite(value) && Number.isInteger(value))) {
     process.stderr.write(
       `[mcp-books] error: ${name}="${raw}" is not a whole number; using ${fallback}.\n`,
     );
