@@ -34,6 +34,9 @@
 
 import { queryTerms } from "./adapter.js";
 
+const QUOTED_PHRASE = /"[^"]*"/;
+const WORD_SEPARATORS = /[^\p{L}\p{N}'’-]+/u;
+
 /** One wording, and how it was arrived at. */
 export interface QueryVariant {
   query: string;
@@ -97,7 +100,7 @@ export function deriveQueries(query: string): QueryVariant[] {
 
   offer(asked, "the words as asked");
 
-  if (/"[^"]*"/.test(asked)) {
+  if (QUOTED_PHRASE.test(asked)) {
     offer(
       asked.replace(/"/g, " "),
       "the quoted phrase without its quotation marks, so an index that requires those words adjacent can match them apart",
@@ -174,7 +177,7 @@ export function deriveQueries(query: string): QueryVariant[] {
 function namesMarkedIn(query: string): string[][] {
   const words = query
     .replace(/"/g, " ")
-    .split(/[^\p{L}\p{N}'’-]+/u)
+    .split(WORD_SEPARATORS)
     .filter((word) => word !== "");
   const marked = words.map(
     (word, at) => OPENS_ON_CAPITAL.test(word) && (at > 0 || OPENS_ON_CAPITAL.test(words[1] ?? "")),

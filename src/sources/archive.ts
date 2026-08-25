@@ -30,6 +30,9 @@ import {
   whole,
 } from "./adapter.js";
 
+/** How the archive stacks several subjects in one string. */
+const SUBJECT_SEPARATOR = /\s*[;,]\s*/;
+
 /** A catalogue row, as the Archive's own reader publishes one. */
 export interface ArchiveItemSummary {
   identifier: string;
@@ -438,7 +441,7 @@ function subjectsOf(raw: unknown): string[] {
   const entries = typeof value === "string" ? [value] : textList(value);
   const kept = entries.flatMap((entry) =>
     entry
-      .split(/\s*[;,]\s*/)
+      .split(SUBJECT_SEPARATOR)
       .map((part) => part.trim())
       .filter((part) => part !== ""),
   );

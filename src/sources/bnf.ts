@@ -32,6 +32,8 @@ import type { ItemDetail, ItemRow, SourceProfile } from "../types.js";
 import type { CatalogueQuery, Claim, ReadDetail, ReadRows, SourceAdapter } from "./adapter.js";
 import { namespacedId, reference, required, rowsOf, text, textList, whole } from "./adapter.js";
 
+const YEAR_DIGITS = /^\d{3,4}$/;
+
 /** An identifier this catalogue can address, as its own reader reads one. */
 export interface BnfEntityId {
   kind: "ark" | "temp-work";
@@ -316,7 +318,7 @@ function creditedWith(creators: unknown): string | null {
  */
 function yearOf(date: unknown): number | null {
   const written = text(date);
-  return written !== null && /^\d{3,4}$/.test(written) ? whole(Number(written)) : null;
+  return written !== null && YEAR_DIGITS.test(written) ? whole(Number(written)) : null;
 }
 
 export function bnfDetail(payload: unknown, retrievedAt: string): ItemDetail {

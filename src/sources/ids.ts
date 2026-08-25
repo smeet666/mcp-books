@@ -12,6 +12,9 @@ import { invalidInput } from "../errors.js";
 import type { SourceId } from "../types.js";
 import type { SourceAdapter } from "./adapter.js";
 
+const PATH_SEPARATOR = /[/\\]/;
+const DOTS_ONLY = /^\.+$/;
+
 export { namespacedId } from "./adapter.js";
 
 const SEPARATOR = ":";
@@ -43,7 +46,7 @@ function climbs(value: string): boolean {
     // A percent sign opening no escape leaves one reading, which is enough.
   }
   return readings.some((reading) =>
-    reading.split(/[/\\]/).some((segment) => /^\.+$/.test(segment)),
+    reading.split(PATH_SEPARATOR).some((segment) => DOTS_ONLY.test(segment)),
   );
 }
 
