@@ -1,6 +1,6 @@
 {
   "name": "mcp-books",
-  "version": "1.2.4",
+  "version": "2.0.0",
   "description": "MCP server that searches the Internet Archive, the Library of Congress and data.bnf.fr at once, inside scanned text and across catalogues. No API key required.",
   "keywords": [
     "mcp",
