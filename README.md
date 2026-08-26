@@ -180,6 +180,23 @@ npx -y mcp-books
 }
 ```
 
+### With Docker
+
+```json
+{
+  "mcpServers": {
+    "books": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "ghcr.io/smeet666/mcp-books:2.0.0"]
+    }
+  }
+}
+```
+
+`-i` keeps stdin open, which is where the protocol travels, and no `-t` is
+passed: a TTY rewrites the stream and breaks it. The container needs outbound
+HTTPS to `archive.org`, `openlibrary.org`, `www.loc.gov` and `data.bnf.fr`, and nothing else: no volume, no port, no environment variable, no credential.
+
 ### From a clone
 
 ```bash
@@ -679,6 +696,24 @@ npx -y mcp-books
   }
 }
 ```
+
+### Avec Docker
+
+```json
+{
+  "mcpServers": {
+    "books": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "ghcr.io/smeet666/mcp-books:2.0.0"]
+    }
+  }
+}
+```
+
+`-i` garde l'entrée standard ouverte, qui est le canal du protocole, et aucun
+`-t` n'est passé : un terminal réécrit le flux et le casse. Le conteneur a besoin
+d'un accès HTTPS sortant vers `archive.org`, `openlibrary.org`, `www.loc.gov` et `data.bnf.fr`, et de rien d'autre :
+aucun volume, aucun port, aucune variable d'environnement, aucun identifiant.
 
 ---
 
