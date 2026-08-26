@@ -62,7 +62,7 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run test/unit",
-    "coverage": "vitest run --coverage",
+    "coverage": "vitest run test/unit --coverage",
     "test:live": "vitest run test/live",
     "format": "biome check --write && prettier --write \"**/*.{md,yml}\"",
     "check": "biome ci && prettier --check \"**/*.{md,yml}\"",
