@@ -16,6 +16,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { beforeAll, describe, expect, it } from "vitest";
 import { DEFAULT_USER_AGENT, createLogger, loadConfig } from "../../src/config.js";
 import { createServer } from "../../src/server.js";
+import { BooksClient } from "../../src/sources/client.js";
 
 /** The one thing that differs from one repository to the next. */
 const ENV_PREFIX = "BOOKS_";
@@ -147,10 +148,13 @@ function backticked(cell: string): string {
 let tools: { name: string; inputSchema: { properties?: Record<string, unknown> } }[] = [];
 
 beforeAll(async () => {
+  const config = loadConfig({});
+  const logger = createLogger("silent");
   const server = createServer({
-    config: loadConfig({}),
-    logger: createLogger("silent"),
-    fetchImpl: (async () => Response.json({})) as unknown as typeof fetch,
+    config,
+    logger,
+    // The tool list is read off the declaration, so no source is ever called.
+    client: new BooksClient({ config, logger }),
   });
   const client = new Client({ name: "test", version: "0.0.0" });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
