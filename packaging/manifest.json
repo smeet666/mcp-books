@@ -42,15 +42,194 @@
   "tools": [
     {
       "name": "search_inside",
-      "description": "Find a phrase in the machine-read text of every archive at once."
+      "description": "Find a phrase in the machine-read text of every archive at once.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 300,
+            "description": "Words, or a phrase in double quotes such as '\"call me ishmael\"'."
+          },
+          "limit": {
+            "default": 3,
+            "description": "Matches to take from each archive, so one archive cannot fill the whole list. The text block shows about six matches; the rest of what comes back is in the structured output.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 25
+          },
+          "page": {
+            "default": 1,
+            "description": "Which page of matches, from 1. Each archive is paged separately.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "max_excerpt_chars": {
+            "default": 300,
+            "description": "Budget for one passage. Read it together with 'max_excerpts_per_match': the size of the answer is the product of the two, the limit, and the number of archives.",
+            "type": "integer",
+            "minimum": 80,
+            "maximum": 1200
+          },
+          "max_excerpts_per_match": {
+            "default": 2,
+            "description": "Passages to keep per match. A long work matches in several places, and the later ones rarely say anything the first did not.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "fan_out": {
+            "default": true,
+            "description": "Whether to derive shorter and differently spelled wordings from the query and ask each archive for the union of what they return. A question written as a sentence returns nothing where every word given has to appear, and the rows an index scores highest where it does not. An archive is asked a derived wording only when the words as asked did not return as many rows as 'limit', so a query that works costs one request. Set false to send exactly the words given. 'per_source' names every wording, sent or not, and each match names the one that returned it.",
+            "type": "boolean"
+          },
+          "sources": {
+            "description": "Archives to ask, by id. Left out, every archive that reads machine-read text is asked, which is the point of this tool.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["archive", "loc", "bnf"]
+            }
+          }
+        },
+        "required": ["query"],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      }
     },
     {
       "name": "search_items",
-      "description": "Search every catalogue at once, each in its own vocabulary."
+      "description": "Search every catalogue at once, each in its own vocabulary.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "A title, a creator, a subject, or plain words."
+          },
+          "media_type": {
+            "description": "The kind of material, in the vocabulary of whichever archive uses that name. the Internet Archive files texts, movies, audio, image, software, data, web; the Library of Congress files books, photos, maps, audio, film-and-videos, manuscripts, notated-music, newspapers; the Bibliothèque nationale de France files work. The names are the union of those vocabularies rather than a shared one, so an archive that does not use the name you give is named as absent rather than asked under another. Naming none leaves an archive that searches every kind unnarrowed and asks an archive that keeps one catalogue per kind for its own default.",
+            "type": "string",
+            "enum": [
+              "audio",
+              "books",
+              "data",
+              "film-and-videos",
+              "image",
+              "manuscripts",
+              "maps",
+              "movies",
+              "newspapers",
+              "notated-music",
+              "photos",
+              "software",
+              "texts",
+              "web",
+              "work"
+            ]
+          },
+          "year_from": {
+            "description": "Earliest year, in each archive's own reading of what a year is. Given with 'year_to', it must not be the later of the two: a range running backwards names no year and is refused rather than read differently by each archive.",
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 2100
+          },
+          "year_to": {
+            "description": "Latest year, in each archive's own reading of what a year is. It cannot be earlier than 'year_from'.",
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 2100
+          },
+          "sort": {
+            "default": "relevance",
+            "description": "Applied inside each archive. The merged list stays interleaved, because no order runs across archives. 'oldest' and 'newest' run on a date field carrying a year and no era, and a record stating no date is placed by a stand-in, so neither end of such an order is a claim about age.",
+            "type": "string",
+            "enum": ["relevance", "newest", "oldest", "title"]
+          },
+          "limit": {
+            "default": 5,
+            "description": "Rows to take from each archive, so one archive cannot fill the whole list.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 25
+          },
+          "page": {
+            "default": 1,
+            "description": "Which page of rows, from 1. Each archive is paged separately.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "fan_out": {
+            "default": true,
+            "description": "Whether to derive further wordings from the query and ask each archive for the union of what they return. A question written as a sentence returns nothing where every word given has to appear, and the records an index scores highest where it does not, and a spelling of a name is not the only one a catalogue files it under. An archive is asked a derived wording only when the words as asked did not return as many rows as 'limit', so a query that works costs one request. Set false to send exactly the words given. 'per_source' names every wording, sent or not, and each row names the one that returned it.",
+            "type": "boolean"
+          },
+          "sources": {
+            "description": "Archives to ask, by id. Left out, they are all asked, which is the point of this tool.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["archive", "loc", "bnf"]
+            }
+          }
+        },
+        "required": ["query"],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      }
     },
     {
       "name": "get_item",
-      "description": "Read one record, routed by the archive its identifier names."
+      "description": "Read one record, routed by the archive its identifier names.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "From a search, such as 'archive:mobydickorwhale01melv' or 'loc:sn83030214/1900-01-01/ed-1/seq-1'."
+          },
+          "sections": {
+            "default": ["description"],
+            "description": "Which parts to return besides the record's identity and its terms of reuse.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["description", "subjects", "copies", "context"]
+            }
+          },
+          "max_copies": {
+            "default": 10,
+            "description": "Copies to list. The answer says how many more the record holds.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "text_offset": {
+            "default": 0,
+            "description": "Where to resume in the record's prose, in characters from its start.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "max_text_chars": {
+            "default": 1500,
+            "description": "Characters of prose to return. The text block shows roughly the first 1400 of them and the whole window is in the structured output. The answer says where to resume.",
+            "type": "integer",
+            "minimum": 200,
+            "maximum": 8000
+          }
+        },
+        "required": ["identifier"],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      }
     }
   ],
   "compatibility": {
