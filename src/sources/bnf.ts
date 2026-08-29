@@ -28,6 +28,7 @@
  * what is there.
  */
 
+import { parseEntityId } from "mcp-databnf/client";
 import type { ItemDetail, ItemRow, SourceProfile } from "../types.js";
 import type { CatalogueQuery, Claim, ReadDetail, ReadRows, SourceAdapter } from "./adapter.js";
 import { namespacedId, reference, required, rowsOf, text, textList, whole } from "./adapter.js";
@@ -100,9 +101,13 @@ export interface BnfRead<T> {
   skipped?: number;
 }
 
-/** The part of the catalogue's client this server uses. */
+/**
+ * The part of the catalogue's client this server uses.
+ *
+ * Reading an address is published beside the client rather than carried on it,
+ * so it is imported once and handed to the routes that take an identifier.
+ */
 export interface BnfReader {
-  identify: (input: string) => BnfEntityId;
   searchWorks: (
     title: string,
     limit: number,
@@ -278,7 +283,7 @@ export function bnfAdapter(reader: BnfReader): SourceAdapter {
     },
 
     async getItem(id: string): Promise<ReadDetail> {
-      const outcome = await reader.getWork(reader.identify(id));
+      const outcome = await reader.getWork(parseEntityId(id) as BnfEntityId);
       return { item: bnfDetail(outcome.data, outcome.retrievedAt), cached: outcome.cached };
     },
   };
