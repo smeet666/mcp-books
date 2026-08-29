@@ -24,12 +24,7 @@ import type {
   LocReader,
 } from "../../src/sources/loc.js";
 import { bnfAdapter } from "../../src/sources/bnf.js";
-import type {
-  BnfEntityId,
-  BnfReader,
-  BnfWorkDetail,
-  BnfWorkSummary,
-} from "../../src/sources/bnf.js";
+import type { BnfReader, BnfWorkDetail, BnfWorkSummary } from "../../src/sources/bnf.js";
 
 /** A failure shaped the way an archive's own reader raises one. */
 export class FakeSourceError extends Error {
@@ -329,23 +324,6 @@ export interface FakeBnfSide {
 
 export function fakeBnf(options: FakeBnfSide = {}): BnfReader {
   return {
-    identify(input: string): BnfEntityId {
-      const digest = /^temp-work\/([0-9a-f]{32})$/i.exec(input.trim());
-      if (digest) {
-        return {
-          kind: "temp-work",
-          id: `temp-work/${digest[1]!.toLowerCase()}`,
-          iri: `http://data.bnf.fr/temp-work/${digest[1]!.toLowerCase()}/#about`,
-          pageUrl: `https://data.bnf.fr/temp-work/${digest[1]!.toLowerCase()}/`,
-        };
-      }
-      return {
-        kind: "ark",
-        id: input.trim().toLowerCase(),
-        iri: `http://data.bnf.fr/ark:/12148/${input.trim().toLowerCase()}#about`,
-        pageUrl: `https://data.bnf.fr/ark:/12148/${input.trim().toLowerCase()}`,
-      };
-    },
     async searchWorks() {
       if (options.fail) {
         throw options.fail;
