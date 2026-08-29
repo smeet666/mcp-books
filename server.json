@@ -19,12 +19,12 @@
     "url": "https://github.com/smeet666/mcp-books",
     "source": "github"
   },
-  "version": "2.0.0",
+  "version": "2.0.1",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "mcp-books",
-      "version": "2.0.0",
+      "version": "2.0.1",
       "transport": {
         "type": "stdio"
       },
@@ -68,8 +68,8 @@
     },
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/smeet666/mcp-books/releases/download/v2.0.0/mcp-books-2.0.0.mcpb",
-      "version": "2.0.0",
+      "identifier": "https://github.com/smeet666/mcp-books/releases/download/v2.0.1/mcp-books-2.0.1.mcpb",
+      "version": "2.0.1",
       "transport": {
         "type": "stdio"
       }
