@@ -52,6 +52,7 @@
     "README.md",
     "LICENSE",
     "CHANGELOG.md",
+    "PRIVACY.md",
     "server.json"
   ],
   "engines": {
@@ -63,6 +64,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run test/unit",
     "coverage": "vitest run test/unit --coverage",
+    "build:manifest": "npm run build && node scripts/build-manifest-tools.mjs",
     "test:live": "vitest run test/live",
     "format": "biome check --write && prettier --write \"**/*.{md,yml}\"",
     "check": "biome ci && prettier --check \"**/*.{md,yml}\"",

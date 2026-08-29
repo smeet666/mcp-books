@@ -8,166 +8,40 @@
 [![M8ven](https://m8ven.ai/badge/mcp/smeet666-mcp-books-1kpajy?variant=verified)](https://m8ven.ai/mcp/smeet666-mcp-books-1kpajy)
 [![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=books&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIm1jcC1ib29rcyJdfQ%3D%3D)
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install-0098FF?style=flat&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=books&config=%7B%22name%22%3A%22books%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22mcp-books%22%5D%7D)
+
 <!-- m8ven-verify: 9550b67f15a2d999bf8a5859c9368aeb -->
 
-One question, several archives. An MCP server that asks every archive it reads
-at the same time, inside the scanned text and across the catalogues, and merges
-what comes back without flattening what makes the two answers different.
+Three great archives hold the scanned record of what was published, and each
+describes it in its own words. The [Internet Archive](https://archive.org) keeps
+books, films, recordings and software deposited by anyone, and has run millions
+of them through optical character recognition. The
+[Library of Congress](https://www.loc.gov) publishes the national collections of
+the United States, one catalogue per kind of material. [data.bnf.fr](https://data.bnf.fr)
+publishes the authority records of the Bibliothèque nationale de France, which
+describe works and the people who wrote them rather than copies.
 
-Today it reads three: the **Internet Archive**, holding the machine-read text of
-digitised books, periodicals and documents; the **Library of Congress**, holding
-the text of American newspaper pages and one catalogue per kind of material; and
-**data.bnf.fr**, the open catalogue of the Bibliothèque nationale de France,
-which describes works as entities and holds no text of its own.
+This server reads all three with one question. You can search the words inside
+the scanned documents, search the catalogues, and read one record in a single
+shape whichever archive holds it. It needs no API key and no account.
 
-No API key. No account. Read-only.
-
----
-
-## What it does
-
-These archives answer different questions with the same gesture. One reads the
-text inside digitised books; another reads the text printed on newspaper pages;
-another describes works a national library has catalogued, and carries no text
-at all. Searching for a phrase asks where that phrase was ever printed, in books
-and in the press at once, and the archive that holds no text is named as absent
-from that question rather than quietly left out.
-
-The merge is therefore **additive**. It is what each archive holds, put
-together. Nothing is set side by side, because archives holding different things
-have nothing to compare.
-
-This server:
-
-- **searches the machine-read text of every archive at once** and returns one
-  list of matches, each naming the archive it came from;
-- **searches every catalogue at once**, each in that archive's own vocabulary;
-- **reads one record**, routed by the archive its identifier names.
-
-### What makes the answers usable
-
-Merging two archives is easy if you are willing to lose what tells them apart.
-This one keeps every difference visible:
-
-| The difference                                                                | What a flattened answer would do  | What happens here                                                                                                                               |
-| ----------------------------------------------------------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| One index holds a page number, the other holds none                           | Invent a page, or drop a true one | `page_number` is a real leaf on one archive and `null` on the other, and the answer says which                                                  |
-| One returns the matched passage, the other the opening of the page            | Present both under one field name | `excerpt_kind` travels with every match, the note counts how many are openings, and an opening is placed after the matches that carry the words |
-| The archives count different things                                           | Add the counts into a total       | Each count is reported in that archive's own terms, and none is added to another                                                                |
-| A year means an edition's date in one place and a catalogue date in the other | Sort the merged list by year      | No date order spans the archives; a sort is applied inside each, and what that order can and cannot express is said                             |
-| One record states terms of reuse, another states none                         | Summarise the answer as reusable  | Terms are stated per record, and a record stating none has granted nothing                                                                      |
-| One archive searches a whole record, another searches titles alone            | Present one query as one question | `searches_on` says which fields each archive read, and the notes say the same words were not the same question                                  |
-| One archive applies a year range and an order, another applies neither        | Report the filter as applied      | A narrowing an archive cannot apply is never sent to it, and `filters_dropped` names the archive and the reason                                 |
-| One row is a copy held somewhere, another is a work as an entity              | Call them all the same thing      | `row_describes` says what a row is on each archive, and `identifier_provisional` marks an identifier its archive can still replace              |
-
-### One query, several questions
-
-The archives do not read the same fields. An index over a whole record answers a
-person's name with the books that person wrote; an index over titles alone
-answers the same name with the books written **about** them. Sending one query to
-several archives therefore asks several questions, and the answer says which:
-`searches_on` in `per_source` names the fields each archive matched against, and
-a note says so in the block a text-only client renders.
-
-The narrowings work the same way. `year_from`, `year_to` and `sort` are applied
-by the archives whose catalogues carry them. An archive whose catalogue carries
-neither is **never sent them**, and `filters_dropped` names it with the reason,
-because a merged list that honoured a criterion on two of its halves and dropped
-it in silence on the third would claim a filter one of its halves never received.
-A row from such an archive that happens to satisfy the range does so by chance.
-
-A row is not one kind of thing either. It is a copy an archive holds on one, a
-catalogue record that may name something on a shelf on another, and a work as an
-entity on a third, whose editions and whose author are records of their own.
-`row_describes` says which, `media_type` carries each archive's own word for it,
-and `identifier_provisional` marks a row whose identifier the archive itself
-calls provisional and can replace once a cataloguer settles the record.
-
-### Excerpts, and what they are worth
-
-Every excerpt is what optical recognition read off a scanned page. The words can
-be wrong, so they are quoted as scanned text and the page is linked.
-
-Beyond that, an excerpt is one of two objects, and the difference is the whole
-reason the field carries a kind:
-
-- **`passage`** is the text around the words that matched.
-- **`page_opening`** is the start of the page. It arrives when the machine-read
-  text that came back with a row stops before the searched words appear, so it
-  does not carry the match at all. Quoting one as the archive's answer puts words
-  in front of a reader that the excerpt does not hold.
-
-Every answer counts how many of its excerpts are openings.
-
-Matches whose excerpt carries the searched words are also placed **before** the
-matches whose excerpt does not. Whether an excerpt holds those words is a
-property each row states about itself, so ordering on it compares no score
-across archives and invents no relevance. Nothing is dropped for it: a page
-opening still names a page where the words were found, and it stays in the
-answer behind the matches that show them. The one-from-each-archive order holds
-inside each of the two groups. An answer whose matches are all of one kind was
-placed by nothing, and keeps quiet about an order it did not perform.
-
-### One question, several wordings
-
-The archives do not read a query the same way, and `per_source` says which each
-one does. An index that answers only where every word given appears comes back
-empty on a question written as a sentence, even for a work it holds several
-copies of, and that emptiness reads as an archive holding nothing. An index that
-scores the words instead answers the same question with whatever it ranks
-highest, so a row of its can carry only some of the words given.
-
-Both searches answer it by deriving further wordings from the query and asking
-each archive for the **union** of what they return. The derivations are made
-from the words themselves, with no corpus statistics and no language model, so
-every wording sent is one a reader can retype:
-
-- the words as asked, always first;
-- a quoted phrase without its quotation marks, which an index requiring those
-  words adjacent can then match apart;
-- the words a question writes with a capital letter inside the sentence, kept in
-  the order they were written and with a run of them kept whole: a capital there
-  is the writing's own mark on a name, a name is what a catalogue files a record
-  under, and reading the mark needs no lexicon and no list of words to ignore;
-- failing any such mark, the longest words of a long question, which is all the
-  letters can say once nothing in the question names anything;
-- the same words with their diacritics removed, and two words run together,
-  because a name is filed under more than one spelling.
-
-Three derivations are deliberately not made. A run-together word is never split
-into two, and diacritics are never added to a word written without them: where
-the cut falls and which letter takes an accent are facts about a language, and
-guessing at either would send an archive a word nobody wrote. A mark is removed
-only from a script that writes a letter and its ornament apart, since a script
-where the two are one letter of the alphabet spells a different word without it,
-and no catalogue files that one either.
-
-What it costs is bounded. Each archive is asked at most **three** queries, one
-after another so its own pacing is kept, and it is asked a derived wording only
-when the words as asked returned fewer rows than `limit`. A query that works
-therefore costs exactly one request per archive. Beyond the first page, and with
-`fan_out` set to false, the words as asked are sent and nothing else.
-
-Nothing about this is implicit. `queries_run` counts the requests that went out,
-and `queries` in `per_source` holds every wording with what it returned, why any
-was withheld, and any that failed. A wording that returned nothing is kept there,
-because that is a statement about the wording rather than about the corpus. The
-union is deduplicated on the namespaced identifier, so two archives returning the
-same string stay two records, and the rows follow the order the wordings were
-sent: this server's own order over what it received, never an archive's
-judgement of relevance.
+_[Version française](#mcp-books-français)_
 
 ---
 
 ## Install
 
-Node 24 or later.
+**One-click install**
+
+[![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=books&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIm1jcC1ib29rcyJdfQ%3D%3D)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install-0098FF?style=flat&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=books&config=%7B%22name%22%3A%22books%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22mcp-books%22%5D%7D)
+
+**Claude Code**
 
 ```bash
-npx -y mcp-books
+claude mcp add books -- npx -y mcp-books
 ```
 
-### Claude Desktop
+**Claude Desktop, Cursor, and any client using the standard config format**
 
 ```json
 {
@@ -179,6 +53,8 @@ npx -y mcp-books
   }
 }
 ```
+
+Node 24 or later is required, and no environment variable has to be set.
 
 ### With Docker
 
@@ -193,498 +69,272 @@ npx -y mcp-books
 }
 ```
 
-`-i` keeps stdin open, which is where the protocol travels, and no `-t` is
-passed: a TTY rewrites the stream and breaks it. The container needs outbound
-HTTPS to `archive.org`, `openlibrary.org`, `www.loc.gov` and `data.bnf.fr`, and nothing else: no volume, no port, no environment variable, no credential.
+`-i` keeps stdin open, which is where the protocol travels, and `-t` is left out
+because a TTY rewrites the stream. The container needs outbound HTTPS to
+`archive.org`, `openlibrary.org`, `www.loc.gov` and `data.bnf.fr`, and nothing
+else: no volume, no port, no credential.
 
-### From a clone
+### Bundle, without npm
 
-```bash
-npm install
-npm run build
-node dist/index.js
-```
+Download `mcp-books-2.0.0.mcpb` from
+[the latest release](https://github.com/smeet666/mcp-books/releases/latest) and
+open it. A client that supports MCP bundles installs it on its own, with no npm
+and no configuration file to edit. The bundle carries its dependencies, so
+nothing is fetched at install time.
 
----
+## What you can ask
 
-## Answers take several seconds
+- "Which books mention the Beaumont light-house?"
+- "Find me anything on the 1906 San Francisco earthquake."
+- "Read me that record and tell me who holds the original."
+- "What does the BnF have on that author?"
+- "Search the photographs rather than the books."
 
-Each archive is left the spacing it is owed: one second for the Internet
-Archive, which publishes no ceiling for a client like this one; six seconds for
-the Library of Congress, which publishes a ceiling of ten requests a minute
-across its whole site, the lowest published limit governing; and three seconds
-for data.bnf.fr, which states no rate for its catalogue and publishes a crawl
-delay of five seconds for its digitisation site.
+An answer takes several seconds: three archives are asked, each at its own pace.
 
-The archives are asked **at the same time** rather than one after another, so a
-call costs about what the slowest archive costs rather than the sum of them. A
-caller waiting on an answer is waiting on that pacing.
+## The three sources
 
----
+| Source    | Archive                              | What it describes                                |
+| --------- | ------------------------------------ | ------------------------------------------------ |
+| `archive` | the Internet Archive                 | deposited copies, of every kind                  |
+| `loc`     | the Library of Congress              | the national collections, one catalogue per kind |
+| `bnf`     | the Bibliothèque nationale de France | works and the people who wrote them              |
 
-## The three tools
+A row's `id` names its archive, so an identifier read from one answer goes back
+to the right one. **Counts are never added across archives**, and an archive that
+failed is reported as having failed rather than as having found nothing.
+
+## Tools
+
+| Tool            | What it does                                                       |
+| --------------- | ------------------------------------------------------------------ |
+| `search_inside` | Searches the words inside the scanned documents.                   |
+| `search_items`  | Searches the catalogues by title, creator, subject or plain words. |
+| `get_item`      | Reads one record in a single shape, whichever archive holds it.    |
 
 ### `search_inside`
 
-A phrase in the text itself. This is the question no catalogue can answer, and
-the one that justifies asking several archives at once.
+Searches the text inside the scanned documents, which came off the page through
+optical character recognition.
 
-| Argument                 | Type                             | Meaning                                            |
-| ------------------------ | -------------------------------- | -------------------------------------------------- |
-| `query`                  | string                           | Words, or a phrase in double quotes                |
-| `limit`                  | integer, 1 to 25, default 3      | Matches to take from each archive                  |
-| `page`                   | integer, default 1               | Which page of matches; each archive is paged apart |
-| `max_excerpt_chars`      | integer, 80 to 1200, default 300 | Budget for one passage                             |
-| `max_excerpts_per_match` | integer, 1 to 10, default 2      | Passages kept per match                            |
-| `fan_out`                | boolean, default true            | Derive further wordings and ask for their union    |
-| `sources`                | array of archive ids, optional   | Left out, every archive that holds text is asked   |
+| Argument                 | Type                               | Required | What it does                                                      |
+| ------------------------ | ---------------------------------- | -------- | ----------------------------------------------------------------- |
+| `query`                  | string, 2 to 300 characters        | yes      | The phrase to look for inside the documents.                      |
+| `limit`                  | integer, 1 to 25, default `3`      | no       | Matches to keep from each archive.                                |
+| `page`                   | integer, 1 to 100, default `1`     | no       | Which page of matches.                                            |
+| `max_excerpt_chars`      | integer, 80 to 1200, default `300` | no       | How much of a passage to serve.                                   |
+| `max_excerpts_per_match` | integer, 1 to 10, default `2`      | no       | Passages served per matching document.                            |
+| `fan_out`                | boolean, default `true`            | no       | Ask every archive rather than stopping at the first that answers. |
+| `sources`                | array of source ids                | no       | Ask these archives alone.                                         |
 
-A match carries `identifier`, `title`, `creator`, `year`, `excerpts`,
-`excerpt_kind`, `source_url` and `page_number`. It also carries `matched_file`
-and `inside_container` where a record bundles several documents, and
-`published_on` and `publication` where the corpus is dated by issue. Every match
-carries `found_by_query`: the wording that returned it, which is the query as
-written unless a further wording was derived, in which case the match answers
-that wording's words and not the rest of the question.
+**In return:** `hits`, each carrying `id`, which `get_item` takes and which names
+its archive; `source` and `source_name`; the archive's own `identifier` without
+the prefix; `title`, `creator` and `year`; `page_number` where the archive states
+one; `excerpts`; and `excerpt_kind`.
 
-`per_source` reports what each archive answered, what its own number counts, what
-its corpus is, whether its index holds a leaf number, whether it answers only
-where every word given appears, and what a year means on it. What it says is
-what this tool asked: the fields a catalogue matches against belong to the
-catalogue search and are not reported here, and an archive that was not asked
-carries none of it.
+**`excerpt_kind` decides what an excerpt is worth.** A `passage` is the text
+around the words that matched. A `page_opening` is the start of the page, sent
+because the machine-read text the archive returned stops before those words
+appear: it does not carry the match, so quoting it quotes something else. All the
+excerpts of one match are of one kind.
 
 ### `search_items`
 
-The catalogue.
+Searches the catalogues.
 
-| Argument               | Type                                                             | Meaning                                                                                    |
-| ---------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `query`                | string                                                           | A title, a creator, a subject, or plain words                                              |
-| `media_type`           | enum, optional                                                   | The kind of material, per-archive vocabulary                                               |
-| `year_from`, `year_to` | integer, optional                                                | In each archive's own reading of a year                                                    |
-| `sort`                 | `relevance` / `newest` / `oldest` / `title`, default `relevance` | Applied inside each archive; a date order is qualified rather than presented as chronology |
-| `limit`, `page`        | integer                                                          | Rows per archive, and which page                                                           |
-| `fan_out`              | boolean, default true                                            | Derive further wordings and ask for their union                                            |
-| `sources`              | array of archive ids, optional                                   | Left out, they are all asked                                                               |
+| Argument     | Type                                                            | Required | What it does                                   |
+| ------------ | --------------------------------------------------------------- | -------- | ---------------------------------------------- |
+| `query`      | string, 1 to 300 characters                                     | yes      | A title, a creator, a subject, or plain words. |
+| `media_type` | a kind one of the archives holds                                | no       | Which kind of material to search.              |
+| `year_from`  | integer, 1000 to 2100                                           | no       | Earliest year.                                 |
+| `year_to`    | integer, 1000 to 2100                                           | no       | Latest year.                                   |
+| `sort`       | `relevance`, `newest`, `oldest` or `title`, default `relevance` | no       | How the rows are ordered.                      |
+| `limit`      | integer, 1 to 25, default `5`                                   | no       | Rows to keep from each archive.                |
+| `page`       | integer, 1 to 100, default `1`                                  | no       | Which page of rows.                            |
+| `fan_out`    | boolean, default `true`                                         | no       | Ask every archive.                             |
+| `sources`    | array of source ids                                             | no       | Ask these archives alone.                      |
 
-`media_type` keeps one name across the archives and a **vocabulary per archive**.
-The names are the union of what the archives use rather than a shared set: the
-Internet Archive files `texts`, `movies`, `audio`, `image`, `software`, `data`
-and `web`; the Library of Congress keeps a separate catalogue for `books`,
-`photos`, `maps`, `audio`, `film-and-videos`, `manuscripts`, `notated-music` and
-`newspapers`; data.bnf.fr files `work`, which names an entity rather than a
-holding.
+The three archives divide their material differently. The Internet Archive
+searches every kind at once when none is named; the Library of Congress is one
+route per kind, so a search naming none is told which one was read; and the BnF
+search reads works. A `media_type` one archive has no notion of leaves that
+archive out, and the answer says so.
 
-`texts` and `books` do not name the same set of things, so an archive that files
-nothing under the name you give is **not asked** and is named as absent with its
-own names listed. `media_types` in the answer publishes what each archive was
-asked under, so a caller maps the vocabularies once and can see what was actually
-searched.
-
-Naming no kind of material leaves the Internet Archive searching every kind and
-asks the Library for `books`, because it keeps one catalogue per kind and a
-search has to name one. The answer says so.
-
-A row carries `found_by_query` as well, naming the wording it came back under.
-
-`per_source` also carries `searches_on`, `row_describes`, `requires_every_word`
-and `filters_dropped`, which are what a caller reads before comparing two rows or
-trusting a filter. A year range whose earliest bound is later than its latest
-names no year: it is refused rather than sent, because one archive answers such a
-pair with nothing and another answers as though no range had been given, and
-neither is the range having been applied.
+**In return:** rows in the shape a hit carries, with `per_source` giving one
+report per archive: its `status`, the `count` it contributed, its
+`reported_total` and `reported_total_means`, which says what that number counts
+there.
 
 ### `get_item`
 
-One record, from the archive its identifier names.
+Reads one record in a single shape, whichever archive holds it.
 
-| Argument         | Type                               | Meaning                                                            |
-| ---------------- | ---------------------------------- | ------------------------------------------------------------------ |
-| `identifier`     | string                             | From a search, such as `archive:<slug>`, `loc:<id>` or `bnf:<ark>` |
-| `sections`       | array, default `["description"]`   | `description`, `subjects`, `copies`, `context`                     |
-| `max_copies`     | integer, default 10                | Copies to list                                                     |
-| `text_offset`    | integer, default 0                 | Where to resume in the record's prose                              |
-| `max_text_chars` | integer, 200 to 8000, default 1500 | Characters of prose to return                                      |
+| Argument         | Type                                                                               | Required | What it does              |
+| ---------------- | ---------------------------------------------------------------------------------- | -------- | ------------------------- |
+| `identifier`     | string, 1 to 500 characters                                                        | yes      | The `id` a row carries.   |
+| `sections`       | array of `description`, `subjects`, `copies`, `context`, default `["description"]` | no       | Which parts to return.    |
+| `max_copies`     | integer, 1 to 50, default `10`                                                     | no       | Copies to list.           |
+| `text_offset`    | integer, 0 to 1000000, default `0`                                                 | no       | Where to resume the text. |
+| `max_text_chars` | integer, 200 to 8000, default `1500`                                               | no       | How much text to serve.   |
 
-The identifier names its archive, so the right one is read without guessing. An
-address is routed by its host and its path. A shape more than one archive mints,
-such as a bare run of digits, is **refused** rather than sent to a guess: a
-catalogue number at the Library and an upload's slug at the Archive can be the
-same string and mean different things. A string no archive would have minted is
-refused too.
+**In return:** the record with its `id`, `source` and `source_name`, the
+archive's own `identifier`, `title`, `creator`, `date` exactly as published, and
+`year` beside `year_means`, which says what that year is the year of, since the
+three archives date a record differently. `attribution` is what that archive asks
+to be credited with, and `identifier_provisional` says when the identifier was
+built rather than read, so a caller knows it may not resolve.
 
-Terms of reuse come back on every read, whatever sections were asked for. The
-answer names both what nobody asked for and what the archive files nothing under
-for any record, so a null can be read correctly. An archive publishing its whole
-catalogue on one condition says so as a condition over the catalogue, and its
-credit line carries what that condition asks for.
+## What an answer states about the archives
 
-Long prose pages by character offset and resumes at a line boundary. An offset
-past the end says so.
+Every answer accounts for each archive separately. One that failed, one nobody
+asked, and one that answered with nothing are three different things, and they
+are reported as three. A total stays beside the archive that published it, with
+what that archive counts when it says it: one counts documents, another counts
+newspaper leaves.
 
----
+## What scanned text is worth
 
-## What it refuses to claim
+The words inside a scanned document came off the page through optical character
+recognition. An excerpt carries the misreadings of that process, and it is served
+as it was read rather than corrected. Quote it as scanned text, and link the
+record so a reader can look at the page.
 
-Each of these is a rule the code is held to, with a test naming it.
+## Configuration
 
-- **An archive that failed is named as an archive that failed, with the moment
-  that failed.** A search that did not answer and a search that answered before a
-  read failed are different statements about the world. An answer holding rows
-  from some archives says nothing about what the others hold.
-- **An archive that cannot answer a question is named as absent, with the
-  reason.** Narrowing an answer to whoever was left, without saying so, leaves it
-  looking like the whole of what the server reads.
-- **No page number is invented, and none is dropped.** `null` on an archive whose
-  index holds no leaf is the index having none, and `per_source` says which
-  archives those are.
-- **No excerpt is presented as something it is not.** The kind travels with every
-  match, the note counts the openings, and a match whose excerpt carries the
-  searched words is placed ahead of one whose excerpt carries them nowhere. That
-  order runs on what each row states about itself, and no match is dropped for it.
-- **No total is invented and no count is added to another.** One archive counts
-  documents, another counts leaves.
-- **No ranking and no date order across archives.** They share no score, and a
-  year is measured on different things in each. Rows interleave, and the answer
-  says how the order was built.
-- **A date order is never presented as chronology.** `oldest` and `newest` run
-  inside each archive on a date field carrying a year and no era, so a date
-  before the common era is filed there as a year of this one and a clay tablet
-  can land among the 1600s. A record stating no date is placed by a stand-in
-  rather than by its age. The answer says both, and counts the rows in front of
-  the reader that carry no year, so the caveat is measured on the question that
-  was actually asked.
-- **No vocabulary is translated between archives.** A name an archive does not
-  use means that archive is not asked.
-- **No filter is reported as applied where it was never sent.** An archive whose
-  catalogue carries no year range and no order is not sent them, and the answer
-  names it with the reason.
-- **One query is not presented as one question.** The archives match against
-  different fields, and the answer publishes which fields each of them read.
-- **A row is never described as something it is not.** A work as an entity is
-  not a copy of an edition, and an identifier its archive calls provisional is
-  marked as one that can change.
-- **Terms of reuse are stated per record**, never summed for an answer, and
-  silence is never read as permission.
-- **Text from an archive cannot imitate this server.** Anything an archive or a
-  caller wrote is put on a single line before it is rendered, with markdown image
-  syntax defused and any opening that would pass for one of the server's own
-  lines indented. The structured payload keeps the text exactly as published.
+Every variable is optional. Set them in the `env` block of your client config.
 
----
+| Variable                  | Default                 | What it does                                                                                                                                                                        |
+| ------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BOOKS_USER_AGENT`        | the project identity    | Names your application to the three archives, with an address where a person can be reached.                                                                                        |
+| `BOOKS_MIN_INTERVAL_MS`   | each archive's own pace | Widens the gap between two requests to one archive, from 500 to 60000. Left unset, every archive keeps the pace it publishes, and a figure set here applies only where it is wider. |
+| `BOOKS_TIMEOUT_MS`        | `45000`                 | Deadline for one request, from 1000 to 120000.                                                                                                                                      |
+| `BOOKS_MAX_RETRIES`       | `3`                     | Attempts after a transient failure, from 0 to 8.                                                                                                                                    |
+| `BOOKS_CACHE_TTL_MS`      | `900000`                | How long an answer stays in memory, from 0 to 86400000.                                                                                                                             |
+| `BOOKS_CACHE_MAX_ENTRIES` | `200`                   | Answers held in memory at once, from 1 to 5000.                                                                                                                                     |
+| `BOOKS_LOG_LEVEL`         | `error`                 | `silent`, `error`, `info` or `debug`, written to stderr.                                                                                                                            |
 
-## Settings
+A value outside its range falls back to the default, and the reason is written to
+stderr.
 
-All optional. A value that cannot be read is reported on stderr and the default
-stands, because a server that refuses to start over a typo is very hard to
-diagnose from inside a host application.
+## Errors
 
-| Variable                  | Default  | Meaning                                                                                                   |
-| ------------------------- | -------- | --------------------------------------------------------------------------------------------------------- |
-| `BOOKS_USER_AGENT`        | —        | Identify your own client. The project's identifier is appended, so an archive can always reach a human    |
-| `BOOKS_MIN_INTERVAL_MS`   | —        | Widens the gap between two requests to one archive. Each archive keeps its own spacing when this is unset |
-| `BOOKS_TIMEOUT_MS`        | `45000`  | Deadline for one request. Generous, because reading the text of millions of pages is the slow route       |
-| `BOOKS_MAX_RETRIES`       | `3`      | Retries on rate limiting and transient failures                                                           |
-| `BOOKS_CACHE_TTL_MS`      | `900000` | In-memory cache lifetime. `0` turns it off                                                                |
-| `BOOKS_CACHE_MAX_ENTRIES` | `200`    | In-memory cache size                                                                                      |
-| `BOOKS_LOG_LEVEL`         | `error`  | `silent`, `error`, `info`, `debug`. Logs go to stderr                                                     |
+Every failure carries one of six codes, a message, and where it helps a hint
+naming the next move.
 
-Each archive is left the spacing it is owed: a second for the Internet Archive,
-which publishes no ceiling for a client like this one, six seconds for the
-Library of Congress, which publishes one, and three seconds for data.bnf.fr.
-`BOOKS_MIN_INTERVAL_MS` can widen every one of them and can narrow none,
-whichever way the setting arrives.
+| Code            | What happened                                           | What to do                                                                      |
+| --------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `not_found`     | An archive answered, and holds no such record.          | Check the identifier with `search_items`.                                       |
+| `invalid_input` | The arguments were refused before any request went out. | Read the message, which names the argument.                                     |
+| `rate_limited`  | An archive asked this client to slow down.              | Wait, then call again with the same arguments. The record is still there.       |
+| `parse_failure` | An answer arrived in a shape this client cannot read.   | Report it at [the issue tracker](https://github.com/smeet666/mcp-books/issues). |
+| `network_error` | The request did not complete.                           | Try again shortly.                                                              |
+| `timeout`       | The request passed its deadline.                        | Raise `BOOKS_TIMEOUT_MS`, or ask for fewer rows.                                |
 
----
+An archive that failed is reported per archive rather than failing the whole
+answer, so one silent archive never hides the others.
 
 ## As a library
 
-The layer that talks to the archives is published beside the server, with no
-protocol attached.
+The layer reading the three archives is published on its own, with its pacing,
+its cache and its errors, and with no protocol attached.
 
 ```ts
 import { BooksClient } from "mcp-books/client";
 
 const client = new BooksClient();
-const merged = await client.searchInside("a wet fog", {
-  limit: 3,
-  page: 1,
-  maxExcerptChars: 300,
-  maxExcerptsPerMatch: 2,
-});
-
-for (const report of merged.reports) {
-  console.log(report.name, report.status, report.reportedTotalMeans ?? "");
-}
+const read = await client.searchItems({ query: "beaumont light-house", limit: 3 });
+console.log(read.data.rows.length);
 ```
 
-`BooksClient` also takes stand-in readers, so a program embedding it can put its
-own cache in front of an archive, or drive it from fixed answers in a test:
+Each read answers `{ data, cached }`, and throws an error carrying one of the six
+codes. Each archive keeps its own pace, and its floor holds here as well.
 
-```ts
-new BooksClient({ readers: { archive: myReader } });
-```
+## Pacing and attribution
 
-A program bringing archives of its own replaces the registry outright with
-`sources`, and every tool works over however many it holds, including archives
-that answer only some of the three calls.
+Each archive is paced on its own, one request at a time, and the widest of its
+own floor and the configured interval governs: the Library of Congress publishes
+the slowest, and asking all three at once therefore costs each of them one
+request rather than three. The `User-Agent` always ends with the project identity
+and an address where a person can be reached.
 
----
+Every record carries the address of its page and the `attribution` its archive
+asks for. The Internet Archive items belong to their depositors, the Library of
+Congress records state their own rights, and the BnF asks that the source and the
+date of retrieval be stated wherever its metadata are shown.
 
-## When something goes wrong
+This MCP server is an unofficial project, with no affiliation to any of the
+archives it reads.
 
-Six error codes, and no others.
+## Privacy
 
-| Code            | Means                                                |
-| --------------- | ---------------------------------------------------- |
-| `not_found`     | An archive answered, and holds no such record        |
-| `invalid_input` | The arguments could not produce a request            |
-| `rate_limited`  | An archive asked this client to slow down            |
-| `parse_failure` | An answer arrived in a shape this client cannot read |
-| `network_error` | The request did not complete                         |
-| `timeout`       | The request exceeded its deadline                    |
-
-`rate_limited` means the record may well exist. Wait and ask again.
-
-A `parse_failure` usually means an archive changed how it answers. That is worth
-reporting: <https://github.com/smeet666/mcp-books/issues>
-
-If a search comes back short, read `per_source` before concluding anything.
-
----
+This server collects nothing about you and sends nothing to its author. It runs
+on your machine, contacts `archive.org`, `openlibrary.org`, `www.loc.gov` and
+`data.bnf.fr` and nothing else, holds its answers in memory while it runs, and
+writes nothing to disk. [PRIVACY.md](PRIVACY.md) states what a request carries
+and which settings change any of it.
 
 ## Development
 
 ```bash
 npm install
-npm run typecheck
-npm test           # unit tests, no network
-npm run build
+npm run build:fixtures
+npm test
+npm run check
 ```
 
-The unit suite runs against stand-in archives, so it is deterministic: time is
-pinned to a fixed epoch, and every assertion is exact. A live suite sits behind
-an environment variable and makes one request per route:
+Tests run against generated fixtures and make no network request. The live suite,
+`npm run test:live`, makes one request per route and runs nightly against the
+archives themselves.
 
-```bash
-BOOKS_LIVE=1 npm run test:live
-```
+## Contributing
 
-A nightly job runs that suite against the real archives and opens an issue when
-it fails, because the unit tests cannot notice that an archive changed.
+Bugs, questions and ideas belong in
+[the issue tracker](https://github.com/smeet666/mcp-books/issues). Pull requests
+are welcome; opening an issue first helps agree on the shape of the change. See
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
-**Adding an archive.** Write an adapter: what it is called, which identifiers it
-mints, which of the three calls it can answer, how to make them, and what its own
-numbers count. Register it in `src/sources/registry.ts`. An adapter that declares
-it cannot answer one of the calls is named as absent from that tool, and the
-server's own guidance is generated from the registry, so it describes what the
-server actually reads.
+## License
 
-**Dependencies.** The reading of each archive is a published library this server
-depends on rather than code it carries. Each keeps its own pacing, its own cache
-and its own error taxonomy, so a fix to how a page is parsed reaches here as a
-version bump. Everything above that seam, including the whole of the merge, lives
-in this repository.
+MIT, see [LICENSE](LICENSE). The records belong to the archives that published
+them and to their depositors.
 
 ---
 
-## Licence and credit
-
-This server is MIT. What it returns is not.
-
-The archives of scans set terms per deposit, and most of their records state none
-at all. A record stating no terms has granted nothing: it is not a licence, and
-it is not a refusal either. Read the record with `get_item`, check the archive's
-own page, and credit what you use.
-
-data.bnf.fr publishes its metadata on one condition: name the source and state
-the date the metadata was retrieved. Every answer carrying one of its rows
-carries that credit with the date, in `attribution` and in the credit line at the
-foot of the text block. Repeat both.
-
-Its records can point at a digitised document on Gallica. Those are addresses for
-a person to open. This server never requests them, because the library places its
-metadata and its digitised contents under two different regimes, so it can say a
-document exists at an address and nothing at all about what is there.
-
-Every result carries a `source_url`. Use it.
-
----
-
----
+<a name="mcp-books-français"></a>
 
 # mcp-books (français)
 
-Une question, plusieurs archives. Un serveur MCP qui interroge en même temps
-toutes les archives qu'il lit, dans le texte numérisé comme dans les catalogues,
-et fusionne leurs réponses sans aplatir ce qui les distingue.
+_[English version](#mcp-books)_
 
-Il en lit trois aujourd'hui : l'**Internet Archive**, qui détient le texte lu par
-reconnaissance optique sur des livres, des périodiques et des documents
-numérisés ; la **Library of Congress**, qui détient le texte des pages de
-journaux américains et un catalogue par nature de document ; et **data.bnf.fr**,
-le catalogue ouvert de la Bibliothèque nationale de France, qui décrit des œuvres
-comme des entités et ne détient aucun texte.
+Trois grandes archives conservent la trace numérisée de ce qui a été publié, et
+chacune la décrit dans ses propres mots. L'[Internet Archive](https://archive.org)
+garde les livres, les films, les enregistrements et les logiciels que chacun y
+dépose, et en a passé des millions par la reconnaissance optique de caractères.
+La [Library of Congress](https://www.loc.gov) publie les collections nationales
+des États-Unis, un catalogue par type de document.
+[data.bnf.fr](https://data.bnf.fr) publie les notices d'autorité de la
+Bibliothèque nationale de France, qui décrivent des œuvres et ceux qui les ont
+écrites plutôt que des exemplaires.
 
-Aucune clé d'API. Aucun compte. Lecture seule.
-
----
-
-## Ce qu'il fait
-
-Ces archives répondent à des questions différentes par le même geste. L'une lit
-le texte à l'intérieur des livres numérisés, une autre celui imprimé sur les
-pages de journaux, une autre décrit les œuvres qu'une bibliothèque nationale a
-cataloguées et ne détient aucun texte. Chercher une phrase, c'est demander où
-elle a été imprimée, dans les livres et dans la presse à la fois ; l'archive qui
-ne détient aucun texte est nommée comme absente de cette question plutôt que
-retirée en silence.
-
-La fusion est donc **additive** : c'est ce que détient chaque archive, réuni.
-Rien n'est mis côte à côte, car des archives qui détiennent des choses
-différentes n'ont rien à comparer.
-
-Ce serveur :
-
-- **cherche dans le texte numérisé de toutes les archives à la fois** et renvoie
-  une seule liste de correspondances, chacune nommant l'archive d'où elle vient ;
-- **cherche dans tous les catalogues à la fois**, chacun dans le vocabulaire qui
-  lui est propre ;
-- **lit une notice**, routée vers l'archive que son identifiant nomme.
-
-### Ce qui rend les réponses utilisables
-
-Fusionner des archives est facile si l'on accepte de perdre ce qui les distingue.
-Ici, chaque écart reste visible :
-
-| L'écart                                                            | Ce que ferait une réponse aplatie            | Ce qui se passe ici                                                                                                                                               |
-| ------------------------------------------------------------------ | -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Un index porte un numéro de page, l'autre non                      | Inventer une page, ou en supprimer une vraie | `page_number` est une vraie feuille chez l'une et `null` chez l'autre, et la réponse dit laquelle                                                                 |
-| L'une rend le passage qui correspond, l'autre le début de la page  | Les présenter sous un seul nom de champ      | `excerpt_kind` voyage avec chaque correspondance, la note compte les débuts de page, et un début de page est placé après les correspondances qui portent les mots |
-| Les archives comptent des choses différentes                       | Additionner les compteurs                    | Chaque compteur est rapporté dans les termes de son archive, et aucun n'est ajouté à un autre                                                                     |
-| Une année vaut la date d'une édition ici, une date de catalogue là | Trier la liste fusionnée par année           | Aucun ordre par date ne traverse les archives ; le tri s'applique à l'intérieur de chacune, et la réponse dit ce que cet ordre peut et ne peut pas exprimer       |
-| Une notice énonce des conditions, une autre n'en énonce aucune     | Résumer la réponse comme réutilisable        | Les droits se disent par notice, et une notice qui n'énonce rien n'a rien accordé                                                                                 |
-| L'une cherche dans toute la notice, l'autre dans les seuls titres  | Présenter une requête comme une question     | `searches_on` dit sur quels champs chaque archive a cherché, et les notes disent que les mêmes mots n'étaient pas la même question                                |
-| L'une applique un intervalle d'années et un tri, l'autre aucun     | Rapporter le filtre comme appliqué           | Un filtre qu'une archive ne sait pas appliquer ne lui est jamais envoyé, et `filters_dropped` nomme l'archive et la raison                                        |
-| Une ligne est un exemplaire détenu, une autre une œuvre-entité     | Les appeler toutes la même chose             | `row_describes` dit ce qu'est une ligne chez chaque archive, et `identifier_provisional` signale un identifiant que l'archive peut encore remplacer               |
-
-### Une requête, plusieurs questions
-
-Les archives ne lisent pas les mêmes champs. Un index sur toute la notice répond
-au nom d'une personne par les livres qu'elle a écrits ; un index sur les seuls
-titres répond au même nom par les livres écrits **sur** elle. Envoyer une requête
-à plusieurs archives pose donc plusieurs questions, et la réponse dit lesquelles :
-`searches_on` dans `per_source` nomme les champs sur lesquels chaque archive a
-cherché, et une note le dit dans le bloc que rend un client textuel.
-
-Les filtres suivent la même règle. `year_from`, `year_to` et `sort` sont
-appliqués par les archives dont le catalogue les porte. Une archive dont le
-catalogue n'en porte aucun ne les reçoit **jamais**, et `filters_dropped` la
-nomme avec la raison : une liste fusionnée qui honorerait un critère sur deux de
-ses moitiés et l'abandonnerait en silence sur la troisième affirmerait un filtre
-que l'une de ses moitiés n'a jamais reçu. Une ligne d'une telle archive qui
-satisfait l'intervalle le fait par hasard.
-
-Une ligne n'est pas non plus une seule sorte de chose. C'est un exemplaire
-détenu par l'archive chez l'une, une notice de catalogue qui peut désigner
-quelque chose posé sur une étagère chez une autre, et une œuvre comme entité chez
-une troisième, dont les éditions et l'auteur sont des notices à part entière.
-`row_describes` dit laquelle, `media_type` porte le mot propre à chaque archive,
-et `identifier_provisional` signale une ligne dont l'archive elle-même qualifie
-l'identifiant de provisoire et peut le remplacer une fois la notice établie.
-
-### Les extraits, et ce qu'ils valent
-
-Chaque extrait est ce qu'une reconnaissance optique a lu sur une page numérisée.
-Les mots peuvent être faux : on les cite comme du texte scanné, et on lie la page.
-
-Au-delà, un extrait est l'un de deux objets, et c'est toute la raison d'être du
-champ qui en porte la nature :
-
-- **`passage`** : le texte autour des mots qui ont correspondu.
-- **`page_opening`** : le début de la page. Il arrive quand le texte numérisé
-  renvoyé avec la ligne s'arrête avant les mots cherchés : il ne porte donc pas
-  la correspondance. Le citer comme la réponse de l'archive met sous les yeux
-  d'un lecteur des mots que l'extrait ne contient pas.
-
-Chaque réponse dit combien de ses extraits sont des débuts de page.
-
-Les correspondances dont l'extrait porte les mots cherchés sont en outre placées
-**avant** celles dont l'extrait ne les porte pas. Qu'un extrait contienne ou non
-ces mots est une propriété que chaque ligne énonce d'elle-même : ordonner
-là-dessus ne compare aucun score entre archives et n'invente aucune pertinence.
-Rien n'est supprimé pour autant : un début de page nomme quand même une page où
-les mots ont été trouvés, et il reste dans la réponse derrière les
-correspondances qui les montrent. L'alternance entre archives tient à
-l'intérieur de chacun des deux groupes. Une réponse dont toutes les
-correspondances sont de même nature n'a été placée par rien, et se tait sur un
-ordre qu'elle n'a pas effectué.
-
-### Une question, plusieurs formulations
-
-Les archives ne lisent pas une requête de la même façon, et `per_source` dit
-laquelle fait quoi. Un index qui ne répond que là où chaque mot donné apparaît
-revient vide sur une question écrite comme une phrase, même pour une œuvre dont
-il détient plusieurs exemplaires, et ce vide se lit comme une archive qui ne
-détient rien. Un index qui pondère les mots répond à la même question par ce
-qu'il classe en tête, et l'une de ses lignes peut ne porter qu'une partie des
-mots donnés.
-
-Les deux recherches y répondent en dérivant d'autres formulations de la requête
-et en demandant à chaque archive l'**union** de ce qu'elles rendent. Les
-dérivations se font à partir des mots eux-mêmes, sans statistiques de corpus ni
-modèle de langue : chaque formulation envoyée est donc une formulation qu'un
-lecteur peut retaper.
-
-- les mots tels quels, toujours en premier ;
-- une phrase entre guillemets sans ses guillemets, qu'un index exigeant ces mots
-  contigus peut alors trouver séparés ;
-- les mots qu'une question écrit avec une majuscule à l'intérieur de la phrase,
-  dans l'ordre où ils ont été écrits et sans jamais couper une suite de ces
-  mots : une majuscule y est la marque que l'écriture pose sur un nom, un nom
-  est ce sous quoi un catalogue classe une notice, et lire cette marque ne
-  demande ni lexique ni liste de mots à ignorer ;
-- à défaut d'une telle marque, les mots les plus longs d'une longue question,
-  qui est tout ce que les lettres peuvent dire quand rien dans la question ne
-  nomme quoi que ce soit ;
-- les mêmes mots sans leurs diacritiques, et deux mots accolés, parce qu'un nom
-  est classé sous plusieurs graphies.
-
-Trois dérivations sont délibérément écartées. Un mot accolé n'est jamais coupé en
-deux, et aucun diacritique n'est ajouté à un mot écrit sans : l'endroit de la
-coupe et la lettre qui prend l'accent relèvent d'une langue, et les deviner
-enverrait à une archive un mot que personne n'a écrit. Une marque n'est retirée
-que dans une écriture qui note la lettre et son ornement séparément, car une
-écriture où les deux forment une seule lettre de l'alphabet en écrirait un autre
-mot, que personne ne classe davantage.
-
-Le coût est borné. Chaque archive reçoit au plus **trois** requêtes, l'une après
-l'autre pour que sa cadence soit tenue, et elle ne reçoit une formulation dérivée
-que si les mots tels quels ont rendu moins de lignes que `limit`. Une requête qui
-fonctionne coûte donc exactement une requête par archive. Au-delà de la première
-page, et avec `fan_out` à faux, seuls les mots tels quels sont envoyés.
-
-Rien n'est implicite. `queries_run` compte les requêtes réellement parties, et
-`queries` dans `per_source` porte chaque formulation avec ce qu'elle a rendu,
-pourquoi l'une a été retenue, et laquelle a échoué. Une formulation qui n'a rien
-rendu y reste, parce que c'est une information sur cette formulation et non sur
-le corpus. L'union est dédupliquée sur l'identifiant préfixé par l'archive : deux
-archives rendant la même chaîne restent deux notices, et les lignes suivent
-l'ordre d'envoi des formulations, qui est l'ordre de ce serveur sur ce qu'il a
-reçu et jamais un jugement de pertinence d'une archive.
-
----
+Ce serveur lit les trois avec une seule question. On peut chercher dans les mots
+contenus dans les documents numérisés, chercher dans les catalogues, et lire une
+notice sous une forme unique quelle que soit l'archive qui la détient. Aucune clé
+d'API, aucun compte.
 
 ## Installation
 
-Node 24 ou plus récent.
+**Installation en un clic**
+
+[![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=books&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIm1jcC1ib29rcyJdfQ%3D%3D)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install-0098FF?style=flat&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=books&config=%7B%22name%22%3A%22books%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22mcp-books%22%5D%7D)
+
+**Claude Code**
 
 ```bash
-npx -y mcp-books
+claude mcp add books -- npx -y mcp-books
 ```
 
-### Claude Desktop
+**Claude Desktop, Cursor, et tout client au format de configuration standard**
 
 ```json
 {
@@ -696,6 +346,9 @@ npx -y mcp-books
   }
 }
 ```
+
+Node 24 ou plus récent est nécessaire, et aucune variable d'environnement n'est à
+renseigner.
 
 ### Avec Docker
 
@@ -710,243 +363,238 @@ npx -y mcp-books
 }
 ```
 
-`-i` garde l'entrée standard ouverte, qui est le canal du protocole, et aucun
-`-t` n'est passé : un terminal réécrit le flux et le casse. Le conteneur a besoin
-d'un accès HTTPS sortant vers `archive.org`, `openlibrary.org`, `www.loc.gov` et `data.bnf.fr`, et de rien d'autre :
-aucun volume, aucun port, aucune variable d'environnement, aucun identifiant.
+`-i` garde l'entrée standard ouverte, qui est le canal du protocole, et `-t` est
+omis parce qu'un TTY réécrit le flux. Le conteneur a besoin d'un accès HTTPS
+sortant vers `archive.org`, `openlibrary.org`, `www.loc.gov` et `data.bnf.fr`, et
+de rien d'autre : aucun volume, aucun port, aucun identifiant.
 
----
+### Bundle, sans npm
 
-## Une réponse prend plusieurs secondes
+Téléchargez `mcp-books-2.0.0.mcpb` depuis
+[la dernière publication](https://github.com/smeet666/mcp-books/releases/latest)
+et ouvrez-le. Un client qui gère les bundles MCP l'installe seul, sans npm et
+sans fichier de configuration à modifier. Le bundle emporte ses dépendances, donc
+rien n'est téléchargé à l'installation.
 
-Chaque archive reçoit le rythme qui lui est dû : une seconde pour l'Internet
-Archive, qui ne publie aucun plafond pour un client comme celui-ci ; six secondes
-pour la Library of Congress, qui annonce dix requêtes par minute pour l'ensemble
-de son site et dont c'est la limite la plus basse qui gouverne ; et trois
-secondes pour data.bnf.fr, qui n'annonce aucun rythme pour son catalogue et
-publie un délai de cinq secondes pour son site de numérisation.
+## Ce qu'on peut demander
 
-Les archives sont interrogées **en même temps** plutôt que l'une après l'autre,
-si bien qu'un appel coûte à peu près ce que coûte l'archive la plus lente, et non
-la somme de toutes. Un appelant qui attend une réponse attend ce rythme.
+- « Quels livres mentionnent le phare de Beaumont ? »
+- « Trouve-moi ce qu'il y a sur le tremblement de terre de San Francisco en 1906. »
+- « Lis-moi cette notice et dis-moi qui conserve l'original. »
+- « Qu'est-ce que la BnF a sur cet auteur ? »
+- « Cherche dans les photographies plutôt que dans les livres. »
 
----
+Une réponse prend plusieurs secondes : trois archives sont interrogées, chacune à
+son rythme.
 
-## Les trois outils
+## Les trois sources
+
+| Source    | Archive                             | Ce qu'elle décrit                                 |
+| --------- | ----------------------------------- | ------------------------------------------------- |
+| `archive` | l'Internet Archive                  | les exemplaires déposés, de tout type             |
+| `loc`     | la Library of Congress              | les collections nationales, un catalogue par type |
+| `bnf`     | la Bibliothèque nationale de France | les œuvres et ceux qui les ont écrites            |
+
+L'`id` d'une ligne nomme son archive, donc un identifiant lu dans une réponse
+retourne vers la bonne. **Les comptes ne sont jamais additionnés entre
+archives**, et une archive qui a échoué est rapportée comme ayant échoué plutôt
+que comme n'ayant rien trouvé.
+
+## Les outils
+
+| Outil           | Ce qu'il fait                                                         |
+| --------------- | --------------------------------------------------------------------- |
+| `search_inside` | Cherche dans les mots contenus dans les documents numérisés.          |
+| `search_items`  | Cherche dans les catalogues par titre, auteur, sujet ou mots simples. |
+| `get_item`      | Lit une notice sous une forme unique, quelle que soit l'archive.      |
 
 ### `search_inside`
 
-Une phrase dans le texte lui-même. C'est la question à laquelle aucun catalogue
-ne répond, et celle qui justifie d'interroger plusieurs archives à la fois.
+Cherche dans le texte contenu dans les documents numérisés, texte issu de la
+reconnaissance optique de caractères.
 
-| Argument                 | Type                              | Sens                                                           |
-| ------------------------ | --------------------------------- | -------------------------------------------------------------- |
-| `query`                  | string                            | Des mots, ou une phrase entre guillemets doubles               |
-| `limit`                  | entier, 1 à 25, défaut 3          | Correspondances prises à chaque archive                        |
-| `page`                   | entier, défaut 1                  | Quelle page ; chaque archive est paginée séparément            |
-| `max_excerpt_chars`      | entier, 80 à 1200, défaut 300     | Budget d'un passage                                            |
-| `max_excerpts_per_match` | entier, 1 à 10, défaut 2          | Passages gardés par correspondance                             |
-| `fan_out`                | booléen, défaut vrai              | Dériver d'autres formulations et demander leur union           |
-| `sources`                | tableau d'identifiants, optionnel | Absent, toutes celles qui détiennent du texte sont interrogées |
+| Argument                 | Type                             | Requis | Ce qu'il fait                                                            |
+| ------------------------ | -------------------------------- | ------ | ------------------------------------------------------------------------ |
+| `query`                  | chaîne, 2 à 300 caractères       | oui    | La phrase à chercher dans les documents.                                 |
+| `limit`                  | entier, 1 à 25, défaut `3`       | non    | Correspondances à garder de chaque archive.                              |
+| `page`                   | entier, 1 à 100, défaut `1`      | non    | Quelle page de correspondances.                                          |
+| `max_excerpt_chars`      | entier, 80 à 1200, défaut `300`  | non    | La longueur de passage à servir.                                         |
+| `max_excerpts_per_match` | entier, 1 à 10, défaut `2`       | non    | Passages servis par document correspondant.                              |
+| `fan_out`                | booléen, défaut `true`           | non    | Interroger chaque archive plutôt que s'arrêter à la première qui répond. |
+| `sources`                | tableau d'identifiants de source | non    | N'interroger que ces archives.                                           |
 
-Chaque correspondance porte `found_by_query` : la formulation qui l'a rendue,
-c'est-à-dire la requête telle qu'écrite, sauf si une autre formulation a été
-dérivée, auquel cas la correspondance répond aux mots de cette formulation et non
-au reste de la question.
+**En retour :** `hits`, chacun portant `id`, que `get_item` reprend et qui nomme
+son archive ; `source` et `source_name` ; l'`identifier` propre à l'archive, sans
+le préfixe ; `title`, `creator` et `year` ; `page_number` là où l'archive en
+indique un ; `excerpts` ; et `excerpt_kind`.
 
-`per_source` rapporte ce qu'a répondu chaque archive, ce que compte son propre
-nombre, quel est son corpus, si son index porte un numéro de feuille, s'il ne
-répond que là où chaque mot donné apparaît, et ce que vaut une année chez elle.
-Ce qui y figure est ce que cet outil a demandé : les champs sur lesquels un
-catalogue cherche appartiennent à la recherche de catalogue et ne sont pas
-rapportés ici, et une archive qui n'a pas été interrogée n'en porte rien.
+**`excerpt_kind` décide de ce que vaut un extrait.** Un `passage` est le texte
+autour des mots trouvés. Un `page_opening` est le début de la page, envoyé parce
+que le texte lu par machine que l'archive a rendu s'arrête avant que ces mots
+apparaissent : il ne porte pas la correspondance, donc le citer cite autre chose.
+Tous les extraits d'une correspondance sont d'un seul type.
 
 ### `search_items`
 
-Le catalogue.
+Cherche dans les catalogues.
 
-| Argument               | Type                                                            | Sens                                                                                                              |
-| ---------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `query`                | string                                                          | Un titre, un auteur, un sujet, ou des mots                                                                        |
-| `media_type`           | enum, optionnel                                                 | La nature du document, vocabulaire par archive                                                                    |
-| `year_from`, `year_to` | entier, optionnel                                               | Dans la lecture qu'a chaque archive d'une année                                                                   |
-| `sort`                 | `relevance` / `newest` / `oldest` / `title`, défaut `relevance` | Appliqué à l'intérieur de chaque archive ; un tri par date est qualifié plutôt que présenté comme une chronologie |
-| `limit`, `page`        | entier                                                          | Lignes par archive, et quelle page                                                                                |
-| `fan_out`              | booléen, défaut vrai                                            | Dériver d'autres formulations et demander leur union                                                              |
-| `sources`              | tableau d'identifiants, optionnel                               | Absent, toutes sont interrogées                                                                                   |
+| Argument     | Type                                                           | Requis | Ce qu'il fait                                       |
+| ------------ | -------------------------------------------------------------- | ------ | --------------------------------------------------- |
+| `query`      | chaîne, 1 à 300 caractères                                     | oui    | Un titre, un auteur, un sujet, ou des mots simples. |
+| `media_type` | un type que l'une des archives détient                         | non    | Le type de document à chercher.                     |
+| `year_from`  | entier, 1000 à 2100                                            | non    | Année la plus ancienne.                             |
+| `year_to`    | entier, 1000 à 2100                                            | non    | Année la plus récente.                              |
+| `sort`       | `relevance`, `newest`, `oldest` ou `title`, défaut `relevance` | non    | L'ordre des lignes.                                 |
+| `limit`      | entier, 1 à 25, défaut `5`                                     | non    | Lignes à garder de chaque archive.                  |
+| `page`       | entier, 1 à 100, défaut `1`                                    | non    | Quelle page de lignes.                              |
+| `fan_out`    | booléen, défaut `true`                                         | non    | Interroger chaque archive.                          |
+| `sources`    | tableau d'identifiants de source                               | non    | N'interroger que ces archives.                      |
 
-`media_type` garde un seul nom d'argument et un **vocabulaire par archive**. Les
-valeurs sont l'union de ce qu'emploient les archives, non un ensemble commun :
-l'Internet Archive classe sous `texts`, `movies`, `audio`, `image`, `software`,
-`data`, `web` ; la Library of Congress tient un catalogue distinct pour `books`,
-`photos`, `maps`, `audio`, `film-and-videos`, `manuscripts`, `notated-music`,
-`newspapers` ; data.bnf.fr classe sous `work`, qui nomme une entité et non un
-exemplaire.
+Les trois archives découpent leurs fonds différemment. L'Internet Archive cherche
+dans tous les types à la fois quand aucun n'est nommé ; la Library of Congress a
+une route par type, donc une recherche qui n'en nomme aucun se voit dire lequel a
+été lu ; et la recherche de la BnF lit des œuvres. Un `media_type` dont une
+archive n'a pas la notion l'écarte de la réponse, et la réponse le dit.
 
-`texts` et `books` ne désignent pas le même ensemble : une archive qui ne classe
-rien sous le nom donné n'est **pas interrogée**, et elle est nommée comme absente
-avec ses propres noms. `media_types` publie sous quel nom chaque archive a été
-interrogée, pour qu'un appelant fasse la correspondance une fois et voie ce qui a
-réellement été cherché.
-
-Ne nommer aucune nature laisse l'Internet Archive chercher dans tout et demande
-`books` à la Library, qui tient un catalogue par nature et exige donc qu'on en
-nomme un. La réponse le dit.
-
-Une ligne porte aussi `found_by_query`, qui nomme la formulation sous laquelle
-elle est revenue.
-
-`per_source` porte aussi `searches_on`, `row_describes`, `requires_every_word` et
-`filters_dropped` : c'est ce qu'un appelant lit avant de comparer deux lignes ou
-de se fier à un filtre. Un intervalle d'années dont la borne basse est postérieure
-à la borne haute ne nomme aucune année : il est refusé plutôt qu'envoyé, parce
-qu'une archive répond alors par rien et une autre comme si aucun intervalle
-n'avait été donné, et ni l'une ni l'autre n'est l'intervalle appliqué.
+**En retour :** des lignes dans la forme d'un `hit`, avec `per_source` qui donne
+un rapport par archive : son `status`, le `count` qu'elle a fourni, son
+`reported_total` et `reported_total_means`, qui dit ce que ce nombre compte
+là-bas.
 
 ### `get_item`
 
-Une notice, chez l'archive que son identifiant nomme.
+Lit une notice sous une forme unique, quelle que soit l'archive qui la détient.
 
-| Argument         | Type                              | Sens                                                              |
-| ---------------- | --------------------------------- | ----------------------------------------------------------------- |
-| `identifier`     | string                            | Issu d'une recherche, `archive:<slug>`, `loc:<id>` ou `bnf:<ark>` |
-| `sections`       | tableau, défaut `["description"]` | `description`, `subjects`, `copies`, `context`                    |
-| `max_copies`     | entier, défaut 10                 | Exemplaires listés                                                |
-| `text_offset`    | entier, défaut 0                  | Où reprendre dans la prose de la notice                           |
-| `max_text_chars` | entier, 200 à 8000, défaut 1500   | Caractères de prose renvoyés                                      |
+| Argument         | Type                                                                                | Requis | Ce qu'il fait                  |
+| ---------------- | ----------------------------------------------------------------------------------- | ------ | ------------------------------ |
+| `identifier`     | chaîne, 1 à 500 caractères                                                          | oui    | L'`id` que porte une ligne.    |
+| `sections`       | tableau de `description`, `subjects`, `copies`, `context`, défaut `["description"]` | non    | Les parties à rendre.          |
+| `max_copies`     | entier, 1 à 50, défaut `10`                                                         | non    | Exemplaires à lister.          |
+| `text_offset`    | entier, 0 à 1000000, défaut `0`                                                     | non    | Où reprendre le texte.         |
+| `max_text_chars` | entier, 200 à 8000, défaut `1500`                                                   | non    | La longueur de texte à servir. |
 
-L'identifiant nomme son archive, donc la bonne est lue sans deviner. Une adresse
-est routée par son hôte et son chemin. Une forme que plusieurs archives
-produisent, comme une suite de chiffres nue, est **refusée** plutôt qu'envoyée à
-un pari : un numéro de catalogue à la Library et un identifiant de dépôt à
-l'Archive peuvent être la même chaîne et désigner deux choses. Une chaîne
-qu'aucune archive n'aurait produite est refusée aussi.
+**En retour :** la notice avec son `id`, `source` et `source_name`,
+l'`identifier` propre à l'archive, `title`, `creator`, `date` exactement telle
+que publiée, et `year` accompagné de `year_means`, qui dit de quoi cette année
+est l'année, les trois archives datant une notice différemment. `attribution` est
+ce que cette archive demande qu'on lui crédite, et `identifier_provisional` dit
+quand l'identifiant a été construit plutôt que lu, pour qu'un appelant sache
+qu'il peut ne pas résoudre.
 
-Les conditions de réutilisation reviennent à chaque lecture, quelles que soient
-les sections demandées. La réponse nomme à la fois ce que personne n'a demandé et
-ce que l'archive ne renseigne jamais, pour qu'un `null` se lise correctement. Une
-archive qui publie tout son catalogue sous une même condition l'énonce comme une
-condition sur le catalogue, et sa ligne de crédit porte ce que cette condition
-demande.
+## Ce qu'une réponse dit des archives
 
----
+Chaque réponse rend compte de chaque archive séparément. Une qui a échoué, une
+que personne n'a interrogée et une qui a répondu vide sont trois choses
+différentes, et elles sont rapportées comme trois. Un total reste à côté de
+l'archive qui l'a publié, avec ce que cette archive compte en le disant : l'une
+compte des documents, une autre des feuillets de journaux.
 
-## Ce qu'il refuse d'affirmer
+## Ce que vaut un texte numérisé
 
-Chacune de ces règles est tenue par un test qui la nomme.
+Les mots contenus dans un document numérisé sont issus de la reconnaissance
+optique de caractères. Un extrait porte les erreurs de lecture de ce procédé, et
+il est servi tel qu'il a été lu plutôt que corrigé. Citez-le comme un texte
+numérisé, et liez la notice pour qu'un lecteur puisse regarder la page.
 
-- **Une archive en échec est nommée comme telle, avec le moment qui a échoué.**
-  Une recherche qui n'a pas répondu et une recherche qui a répondu avant qu'une
-  lecture échoue sont deux affirmations différentes sur le monde.
-- **Une archive qui ne sait pas répondre est nommée comme absente, avec la
-  raison.** Restreindre une réponse à qui restait, sans le dire, la laisse
-  ressembler à tout ce que le serveur lit.
-- **Aucun numéro de page n'est inventé, et aucun n'est supprimé.** Un `null` chez
-  une archive dont l'index n'en porte pas, c'est l'index qui n'en a pas, et
-  `per_source` dit lesquelles sont dans ce cas.
-- **Aucun extrait n'est présenté pour autre chose que ce qu'il est.** Sa nature
-  voyage avec chaque correspondance, la note compte les débuts de page, et une
-  correspondance dont l'extrait porte les mots cherchés est placée devant une
-  correspondance dont l'extrait ne les porte nulle part. Cet ordre repose sur ce
-  que chaque ligne énonce d'elle-même, et aucune correspondance n'est supprimée.
-- **Aucun total n'est inventé et aucun compteur n'est ajouté à un autre.** L'une
-  compte des documents, l'autre des feuilles.
-- **Aucun classement et aucun ordre par date entre archives.** Elles ne partagent
-  aucun score, et une année ne se mesure pas sur la même chose. Les lignes
-  alternent, et la réponse dit comment l'ordre a été construit.
-- **Un tri par date n'est jamais présenté comme une chronologie.** `oldest` et
-  `newest` s'appliquent à l'intérieur de chaque archive, sur un champ de date qui
-  porte une année et aucune ère : une date avant notre ère y est rangée comme une
-  année de la nôtre, et une tablette d'argile peut atterrir au milieu des années 1600. Une notice qui n'énonce aucune date est placée par une valeur de
-  remplacement plutôt que par son âge. La réponse dit les deux, et compte les
-  lignes sous les yeux du lecteur qui ne portent aucune année, pour que la mise
-  en garde soit mesurée sur la question réellement posée.
-- **Aucun vocabulaire n'est traduit d'une archive à l'autre.**
-- **Aucun filtre n'est rapporté comme appliqué là où il n'a jamais été envoyé.**
-  Une archive dont le catalogue ne porte ni intervalle d'années ni tri ne les
-  reçoit pas, et la réponse la nomme avec la raison.
-- **Une requête n'est pas présentée comme une question.** Les archives cherchent
-  sur des champs différents, et la réponse publie lesquels chacune a lus.
-- **Une ligne n'est jamais décrite pour autre chose qu'elle-même.** Une œuvre
-  comme entité n'est pas l'exemplaire d'une édition, et un identifiant que son
-  archive dit provisoire est signalé comme pouvant changer.
-- **Les droits se disent par notice**, jamais résumés pour la réponse entière, et
-  le silence n'est jamais lu comme une autorisation.
-- **Le texte d'une archive ne peut pas imiter ce serveur.** Tout ce qu'une archive
-  ou un appelant a écrit tient sur une seule ligne avant affichage, la syntaxe
-  d'image markdown est désamorcée, et une ouverture qui passerait pour une ligne
-  du serveur est indentée. La charge structurée conserve le texte tel que publié.
+## Configuration
 
----
+Chaque variable est facultative. Elles se posent dans le bloc `env` de la
+configuration du client.
 
-## Réglages
+| Variable                  | Défaut                            | Ce qu'elle fait                                                                                                                                                                                           |
+| ------------------------- | --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BOOKS_USER_AGENT`        | l'identité du projet              | Nomme votre application auprès des trois archives, avec une adresse où joindre une personne.                                                                                                              |
+| `BOOKS_MIN_INTERVAL_MS`   | le rythme propre à chaque archive | Élargit l'écart entre deux requêtes vers une même archive, de 500 à 60000. Non posée, chaque archive garde le rythme qu'elle publie, et une valeur posée ici ne s'applique que là où elle est plus large. |
+| `BOOKS_TIMEOUT_MS`        | `45000`                           | Délai d'une requête, de 1000 à 120000.                                                                                                                                                                    |
+| `BOOKS_MAX_RETRIES`       | `3`                               | Tentatives après un échec passager, de 0 à 8.                                                                                                                                                             |
+| `BOOKS_CACHE_TTL_MS`      | `900000`                          | Durée pendant laquelle une réponse reste en mémoire, de 0 à 86400000.                                                                                                                                     |
+| `BOOKS_CACHE_MAX_ENTRIES` | `200`                             | Réponses gardées en mémoire à la fois, de 1 à 5000.                                                                                                                                                       |
+| `BOOKS_LOG_LEVEL`         | `error`                           | `silent`, `error`, `info` ou `debug`, écrit sur la sortie d'erreur.                                                                                                                                       |
 
-Tous optionnels. Une valeur illisible est signalée sur stderr et la valeur par
-défaut s'applique : un serveur qui refuse de démarrer à cause d'une faute de
-frappe est très difficile à diagnostiquer depuis l'application hôte.
+Une valeur hors de sa plage retombe sur le défaut, et la raison est écrite sur la
+sortie d'erreur.
 
-| Variable                  | Défaut   | Sens                                                                                                    |
-| ------------------------- | -------- | ------------------------------------------------------------------------------------------------------- |
-| `BOOKS_USER_AGENT`        | —        | Identifiez votre client. L'identité du projet est ajoutée, pour qu'une archive puisse joindre un humain |
-| `BOOKS_MIN_INTERVAL_MS`   | —        | Élargit l'écart entre deux requêtes vers une archive. Absent, chaque archive garde son propre rythme    |
-| `BOOKS_TIMEOUT_MS`        | `45000`  | Délai maximal d'une requête. Large, car lire le texte de millions de pages est la route lente           |
-| `BOOKS_MAX_RETRIES`       | `3`      | Réessais en cas de limitation ou d'échec passager                                                       |
-| `BOOKS_CACHE_TTL_MS`      | `900000` | Durée de vie du cache mémoire. `0` le désactive                                                         |
-| `BOOKS_CACHE_MAX_ENTRIES` | `200`    | Taille du cache mémoire                                                                                 |
-| `BOOKS_LOG_LEVEL`         | `error`  | `silent`, `error`, `info`, `debug`. Sur stderr                                                          |
+## Erreurs
 
-Chaque archive reçoit le rythme qui lui est dû : une seconde pour l'Internet
-Archive, qui ne publie aucun plafond pour un client comme celui-ci, six secondes
-pour la Library of Congress, qui en publie un, et trois secondes pour
-data.bnf.fr. `BOOKS_MIN_INTERVAL_MS` peut les élargir toutes et n'en resserre
-aucune, par quelque chemin que le réglage arrive.
+Chaque échec porte un des six codes, un message, et quand cela aide une
+indication du geste suivant.
 
----
+| Code            | Ce qui s'est passé                                    | Que faire                                                                             |
+| --------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `not_found`     | Une archive a répondu, et n'a pas cette notice.       | Vérifiez l'identifiant avec `search_items`.                                           |
+| `invalid_input` | Les arguments ont été refusés avant toute requête.    | Lisez le message, qui nomme l'argument.                                               |
+| `rate_limited`  | Une archive demande à ce client de ralentir.          | Attendez, puis rappelez avec les mêmes arguments. La notice est toujours là.          |
+| `parse_failure` | Une réponse est arrivée dans une forme illisible ici. | Signalez-le sur [le suivi d'incidents](https://github.com/smeet666/mcp-books/issues). |
+| `network_error` | La requête n'a pas abouti.                            | Réessayez sous peu.                                                                   |
+| `timeout`       | La requête a dépassé son délai.                       | Augmentez `BOOKS_TIMEOUT_MS`, ou demandez moins de lignes.                            |
 
-## En cas de problème
+Une archive qui échoue est rapportée archive par archive plutôt que de faire
+échouer toute la réponse, donc une archive silencieuse n'en cache jamais
+d'autres.
 
-Six codes d'erreur, et pas d'autres.
+## Comme bibliothèque
 
-| Code            | Sens                                                            |
-| --------------- | --------------------------------------------------------------- |
-| `not_found`     | Une archive a répondu, et n'a pas cette notice                  |
-| `invalid_input` | Les arguments ne permettaient pas de former une requête         |
-| `rate_limited`  | Une archive a demandé à ce client de ralentir                   |
-| `parse_failure` | Une réponse est arrivée dans une forme illisible pour ce client |
-| `network_error` | La requête n'a pas abouti                                       |
-| `timeout`       | La requête a dépassé son délai                                  |
+La couche qui lit les trois archives est publiée seule, avec son rythme, son
+cache et ses erreurs, sans protocole attaché.
 
-`rate_limited` laisse entière la possibilité que la notice existe. Attendez et
-redemandez.
+```ts
+import { BooksClient } from "mcp-books/client";
 
-Un `parse_failure` signifie en général qu'une archive a changé sa façon de
-répondre. Cela vaut un signalement :
-<https://github.com/smeet666/mcp-books/issues>
+const client = new BooksClient();
+const read = await client.searchItems({ query: "beaumont light-house", limit: 3 });
+console.log(read.data.rows.length);
+```
 
-Si une recherche revient courte, lisez `per_source` avant d'en conclure quoi que
-ce soit.
+Chaque lecture répond `{ data, cached }`, et lève une erreur portant un des six
+codes. Chaque archive garde son propre rythme, et son plancher tient également
+ici.
 
----
+## Rythme et attribution
 
-## Licence et crédit
+Chaque archive est cadencée pour elle-même, une requête à la fois, et c'est le
+plus large de son propre plancher et de l'intervalle configuré qui gouverne : la
+Library of Congress publie le plus lent, et interroger les trois à la fois coûte
+donc à chacune une requête plutôt que trois. Le `User-Agent` se termine toujours
+par l'identité du projet et une adresse où joindre une personne.
 
-Ce serveur est sous licence MIT. Ce qu'il renvoie ne l'est pas.
+Chaque notice porte l'adresse de sa page et l'`attribution` que son archive
+demande. Les documents de l'Internet Archive appartiennent à ceux qui les ont
+déposés, les notices de la Library of Congress énoncent leurs propres droits, et
+la BnF demande que la source et la date de récupération soient indiquées partout
+où ses métadonnées sont montrées.
 
-Les archives de numérisations fixent leurs conditions dépôt par dépôt, et la
-plupart de leurs notices n'en énoncent aucune. Une notice qui n'énonce rien n'a
-rien accordé : ce n'est pas une licence, et ce n'est pas non plus un refus. Lisez
-la notice avec `get_item`, vérifiez la page de l'archive, et créditez ce que vous
-reprenez.
+Ce MCP est un projet non officiel, sans affiliation à aucune des archives qu'il
+lit.
 
-data.bnf.fr publie ses métadonnées sous une condition : nommer la source et
-indiquer la date de récupération. Toute réponse portant une de ses lignes porte
-ce crédit avec la date, dans `attribution` et dans la ligne de crédit au pied du
-bloc de texte. Reprenez les deux.
+## Confidentialité
 
-Ses notices peuvent pointer vers un document numérisé sur Gallica. Ce sont des
-adresses à ouvrir par une personne. Ce serveur ne les requête jamais, parce que
-la bibliothèque place ses métadonnées et ses contenus numérisés sous deux régimes
-différents : il peut donc dire qu'un document existe à une adresse, et rien du
-tout sur ce qui s'y trouve.
+Ce serveur ne collecte rien sur vous et n'envoie rien à son auteur. Il tourne sur
+votre machine, ne joint que `archive.org`, `openlibrary.org`, `www.loc.gov` et
+`data.bnf.fr`, garde ses réponses en mémoire le temps qu'il tourne, et n'écrit
+rien sur le disque. [PRIVACY.md](PRIVACY.md) dit ce qu'une requête emporte et
+quels réglages changent cela.
 
-Chaque résultat porte un `source_url`. Servez-vous-en.
+## Développement
+
+```bash
+npm install
+npm run build:fixtures
+npm test
+npm run check
+```
+
+Les tests s'exécutent sur des fixtures engendrées et n'émettent aucune requête.
+La suite en direct, `npm run test:live`, émet une requête par route et tourne
+chaque nuit contre les archives elles-mêmes.
+
+## Contribuer
+
+Les anomalies, les questions et les idées ont leur place dans
+[le suivi d'incidents](https://github.com/smeet666/mcp-books/issues). Les
+propositions de modification sont bienvenues ; ouvrir un ticket d'abord aide à
+s'accorder sur la forme du changement. Voir [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Licence
+
+MIT, voir [LICENSE](LICENSE). Les notices appartiennent aux archives qui les ont
+publiées et à ceux qui les y ont déposées.
