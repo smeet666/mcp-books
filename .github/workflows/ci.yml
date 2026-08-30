@@ -26,6 +26,18 @@ jobs:
       # nit must never hide a failing test, so both jobs start at once.
       - run: npm run check
 
+  floors:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      # The published archive carries no lockfile, so a consumer resolves the
+      # dependencies from the ranges alone. `npm audit` reads the installed tree
+      # and passes a range whose lowest accepted version carries an advisory.
+      - run: npm run audit:floors
+
   test:
     runs-on: ubuntu-latest
     strategy:
