@@ -75,9 +75,9 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "mcp-archiveorg": "^2.0.0",
-    "mcp-databnf": "^2.1.0",
-    "mcp-libraryofcongress": "^3.0.0",
+    "mcp-archiveorg": "^2.0.1",
+    "mcp-databnf": "^2.1.2",
+    "mcp-libraryofcongress": "^3.0.1",
     "zod": "^4.5.2"
   },
   "devDependencies": {
