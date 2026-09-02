@@ -1,0 +1,1800 @@
+{
+  "author": "Damien Bouissou",
+  "authorUrl": "https://github.com/smeet666",
+  "description": "MCP server that searches the Internet Archive, the Library of Congress and data.bnf.fr at once, inside scanned text and across catalogues. No API key required.",
+  "homepage": "https://github.com/smeet666/mcp-books#readme",
+  "identifier": "smeet666-mcp-books",
+  "name": "mcp-books",
+  "prompts": [],
+  "resources": [],
+  "tags": [
+    "mcp",
+    "model-context-protocol",
+    "mcp-server",
+    "books",
+    "archives",
+    "full-text-search",
+    "internet-archive",
+    "library-of-congress",
+    "bnf",
+    "data-bnf",
+    "newspapers",
+    "ocr"
+  ],
+  "tools": [
+    {
+      "name": "search_inside",
+      "title": "Find a phrase in the scanned text of every archive",
+      "description": "Search the machine-read text of every archive this server reads that holds any, at the same time, and get one list of where a phrase was printed. The archives behind this tool hold different material, so the list is additive: it is the places a phrase appears in each corpus, put together, rather than the same question answered twice. 'per_source' names what each corpus is. A match carries 'page_number', which is a real leaf on an archive whose index holds one and null on an archive whose index holds none. That null is the index having no leaf, never a page this server dropped, and no page is ever invented. A match also carries 'excerpt_kind'. 'passage' is the text around the words that matched. 'page_opening' is the start of the page, sent because the machine-read text that came back stops before the searched words appear, so it does not carry the match. The notes say how many excerpts are openings. Every count is that archive's own and counts something of its own: documents in one place, leaves in another. They are never added together, and there is no total across archives. Rows are interleaved one archive at a time. Nothing ranks them against each other and nothing orders them by date, because a year is measured on different things in each archive. Matches whose excerpt carries the searched words are placed before matches whose excerpt is a 'page_opening' and carries them nowhere. That rests on what each row states about its own excerpt rather than on any score, no match is ever dropped for it, and the interleaving holds inside each of the two groups. The archives read the words given in different ways, and 'per_source' says which each one does. An index that answers only where every word appears returns nothing for a question written as a sentence, even on a work it holds several copies of; an index that scores the words instead answers such a question with the pages it ranks highest, which can carry only some of them. Either way it is the words: a character that is neither a letter nor a digit is no word to an index, and 'non_word_characters' lists any the query carried. Shorter and differently spelled wordings are therefore derived from the query and asked for their union, which costs nothing extra when the words as asked already answer. Every wording sent is named in 'per_source' with what it returned, every match carries the wording that returned it in 'found_by_query', and 'fan_out' turns the derivation off. Use search_items for a work by its title, its creator or its subject: this tool reads the text on the pages and knows nothing of a catalogue, so a title given here finds every book that happens to mention it and misses the book itself. Answers take several seconds, because one of the archives publishes a request ceiling this server keeps to. A slow answer is the pacing, not a stall.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 300,
+            "description": "Words, or a phrase in double quotes such as '\"call me ishmael\"'."
+          },
+          "limit": {
+            "default": 3,
+            "description": "Matches to take from each archive, so one archive cannot fill the whole list. The text block shows about six matches; the rest of what comes back is in the structured output.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 25
+          },
+          "page": {
+            "default": 1,
+            "description": "Which page of matches, from 1. Each archive is paged separately.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "max_excerpt_chars": {
+            "default": 300,
+            "description": "Budget for one passage. Read it together with 'max_excerpts_per_match': the size of the answer is the product of the two, the limit, and the number of archives.",
+            "type": "integer",
+            "minimum": 80,
+            "maximum": 1200
+          },
+          "max_excerpts_per_match": {
+            "default": 2,
+            "description": "Passages to keep per match. A long work matches in several places, and the later ones rarely say anything the first did not.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "fan_out": {
+            "default": true,
+            "description": "Whether to derive shorter and differently spelled wordings from the query and ask each archive for the union of what they return. A question written as a sentence returns nothing where every word given has to appear, and the rows an index scores highest where it does not. An archive is asked a derived wording only when the words as asked did not return as many rows as 'limit', so a query that works costs one request. Set false to send exactly the words given. 'per_source' names every wording, sent or not, and each match names the one that returned it.",
+            "type": "boolean"
+          },
+          "sources": {
+            "description": "Archives to ask, by id. Left out, every archive that reads machine-read text is asked, which is the point of this tool.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["archive", "loc", "bnf"]
+            }
+          }
+        },
+        "required": ["query"],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "hits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Pass this to get_item. It names its archive, so nothing is guessed."
+                },
+                "source": {
+                  "type": "string",
+                  "description": "Which archive published this match."
+                },
+                "source_name": {
+                  "type": "string"
+                },
+                "identifier": {
+                  "type": "string",
+                  "description": "The archive's own identifier, without the prefix."
+                },
+                "title": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "creator": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "year": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What this archive calls a year. The archives measure it on different things, so 'per_source' says what it means on each and no order is imposed across them."
+                },
+                "page_number": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The leaf the passage sits on. Null on an archive whose full-text index holds no leaf number: read 'publishes_page_number' in 'per_source' to tell that from a row where a leaf simply was not given. Never invent one."
+                },
+                "excerpts": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Machine-read text, all of one kind for this match."
+                },
+                "excerpt_kind": {
+                  "type": "string",
+                  "enum": ["passage", "page_opening"],
+                  "description": "'passage' means the text around the words that matched. 'page_opening' means the start of the page, sent because the machine-read text that came back with this row stops before the searched words appear. A page_opening does not carry the match."
+                },
+                "source_url": {
+                  "type": "string",
+                  "description": "The page itself. Show this when citing the match."
+                },
+                "matched_file": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The document the passage sits in, when the record bundles several. Null when the record is the document."
+                },
+                "inside_container": {
+                  "type": "boolean",
+                  "description": "True when the passage comes from a document bundled inside the record, in which case the title, creator and year above describe the container rather than the text that matched."
+                },
+                "published_on": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Date of the issue, as published, on a corpus dated by issue."
+                },
+                "publication": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The newspaper the page belongs to, where there is one."
+                },
+                "found_by_query": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The wording this archive was given that returned this row. It is the query as you wrote it unless a further wording was derived, in which case the row answers that wording's words and not the rest of the question."
+                },
+                "found_by_derivation": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "How that wording was arrived at from the question, in words."
+                }
+              },
+              "required": [
+                "id",
+                "source",
+                "source_name",
+                "identifier",
+                "title",
+                "creator",
+                "year",
+                "page_number",
+                "excerpts",
+                "excerpt_kind",
+                "source_url",
+                "matched_file",
+                "inside_container",
+                "published_on",
+                "publication",
+                "found_by_query",
+                "found_by_derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "hit_count": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Matches in this answer, across every archive. It is a count of what came back, never a total of what exists."
+          },
+          "per_source": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["answered", "failed", "absent"],
+                  "description": "'answered' means it replied. 'failed' means it was asked and did not. 'absent' means it was never asked, and 'absent_because' says why."
+                },
+                "stage": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": ["search", "read"]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Which moment this report is about: the search that looks for records, or the read that opens one. Null on an archive that was never asked. A search that did not answer and a search that answered before a read failed are different statements."
+                },
+                "absent_because": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Why this archive was left out. Null unless the status is absent."
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "Rows this archive contributed to the answer."
+                },
+                "reported_total": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What this archive said it saw. Null when it states no number at all."
+                },
+                "reported_total_means": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What 'reported_total' counts on this archive. The archives count different things and these numbers are never added together."
+                },
+                "skipped": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "Rows this archive sent in a shape the server could not read, and left out of this answer. Always a count, so it reads the same way on every answer. Rows served out of a cache were counted the same way when they were first read, and 'cached' marks an answer whose count can be short of a drop nobody kept a record of."
+                },
+                "more_on_this_archive": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Whether this archive says it holds matches beyond the page just read. Raise 'page' to read them. Null where it states no total, and on an archive that was never asked."
+                },
+                "ordered_on": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What this archive ordered its own rows on. No order runs across archives."
+                },
+                "media_type_asked": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The name this archive was asked to look under, in its own vocabulary. Null where it searches every kind at once."
+                },
+                "attribution": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What to say when repeating what this archive contributed, as this archive states it for this answer. An archive whose licence asks for the date its metadata was retrieved carries that date here. Null on an archive that was never asked."
+                },
+                "searches_on": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The fields this archive matched the query against. The archives read different ones, so the same words are not the same question everywhere, and a name given to an index over titles alone comes back as the works written about that person."
+                },
+                "row_describes": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What one row from this archive is: a copy it holds, a record in a catalogue, or a work as an entity whose editions are records of their own. Rows carry the same fields and describe different kinds of thing."
+                },
+                "filters_dropped": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "filter": {
+                        "type": "string",
+                        "description": "The narrowing, named as the argument that carries it."
+                      },
+                      "because": {
+                        "type": "string",
+                        "description": "Why this archive never received it."
+                      }
+                    },
+                    "required": ["filter", "because"],
+                    "additionalProperties": false
+                  },
+                  "description": "Narrowings you asked for that this archive never received, because its catalogue cannot apply them. Its rows were not narrowed by them, and a row from it that happens to satisfy one is a coincidence rather than a filter. Empty when it received every narrowing asked for."
+                },
+                "queries": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "type": "string",
+                        "description": "The words this archive was given, exactly as they were sent."
+                      },
+                      "derivation": {
+                        "type": "string",
+                        "description": "How this wording was arrived at from the question, in words."
+                      },
+                      "ran": {
+                        "type": "boolean",
+                        "description": "Whether it was sent. False means it was derived and withheld."
+                      },
+                      "count": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Rows the archive returned for this wording. Zero is that wording finding nothing, which is a statement about the wording. Null when it was not sent, or did not answer."
+                      },
+                      "added": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Rows this wording contributed that an earlier one had not already returned. Null when it was not sent, or did not answer."
+                      },
+                      "not_run_because": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Why it was withheld. Null when it was sent."
+                      },
+                      "error": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "code": {
+                                "type": "string"
+                              },
+                              "message": {
+                                "type": "string"
+                              },
+                              "hint": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["code", "message"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Why this wording did not answer. Null when it did, or was never sent."
+                      }
+                    },
+                    "required": [
+                      "query",
+                      "derivation",
+                      "ran",
+                      "count",
+                      "added",
+                      "not_run_because",
+                      "error"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "Every wording derived for this archive, in the order they were tried, with what each one returned and why any was withheld. Retyping one of them reproduces its rows by hand. Empty on a call that carries no query."
+                },
+                "year_means": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What a 'year' on this archive's rows was measured on."
+                },
+                "publishes_page_number": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Whether this archive's full-text index holds a leaf number. False makes every 'page_number' from it null by nature."
+                },
+                "corpus": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What body of material this archive's full-text index reads. Null where this answer did not read it."
+                },
+                "requires_every_word": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Whether the index this answer put the words to answers only where every word given appears. It covers the words: a character that is neither a letter nor a digit is not a word to an index, and those are listed in 'non_word_characters' instead. False means the index ranks the words and answers with what it scores highest, so one of its rows can carry only some of them. Null on an archive that was not asked."
+                },
+                "cached": {
+                  "type": "boolean",
+                  "description": "Served from this server's short-lived in-memory cache."
+                },
+                "error": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "hint": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["code", "message"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Why this archive did not answer. Null when it did."
+                }
+              },
+              "required": [
+                "source",
+                "name",
+                "status",
+                "stage",
+                "absent_because",
+                "count",
+                "reported_total",
+                "reported_total_means",
+                "skipped",
+                "more_on_this_archive",
+                "ordered_on",
+                "media_type_asked",
+                "attribution",
+                "searches_on",
+                "row_describes",
+                "filters_dropped",
+                "queries",
+                "year_means",
+                "publishes_page_number",
+                "corpus",
+                "requires_every_word",
+                "cached",
+                "error"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "queries_run": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Requests this server sent for this answer, counting every wording on every archive. Each archive's own wordings are in 'per_source'."
+          },
+          "non_word_characters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Characters in the query that are neither letters nor digits. These indexes answer on words, so a match here can carry none of them, and 'requires_every_word' covers the words that were given rather than these."
+          },
+          "order": {
+            "type": "string",
+            "description": "How the list was built, in words."
+          },
+          "excerpt_kinds": {
+            "type": "object",
+            "properties": {
+              "passage": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "Excerpts that carry the words that matched."
+              },
+              "page_opening": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "Excerpts that are the opening of a page and do not carry the match."
+              }
+            },
+            "required": ["passage", "page_opening"],
+            "additionalProperties": false,
+            "description": "How many excerpts here are of each kind."
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "query",
+          "page",
+          "hits",
+          "hit_count",
+          "per_source",
+          "queries_run",
+          "non_word_characters",
+          "order",
+          "excerpt_kinds",
+          "notes"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "search_items",
+      "title": "Search every catalogue at once",
+      "description": "Search the catalogue of every archive this server reads, at the same time, for a title, a creator or a subject, and get one merged list. Each row carries the id get_item takes, and that id names the archive it came from, so nothing has to be guessed afterwards. 'media_type' keeps one name across the archives and a vocabulary per archive, because the same word does not name the same set of things twice. An archive that files nothing under the name you give is not asked and is named as absent, with its own names listed, rather than asked under a translation. An archive that keeps one catalogue per kind of material is asked for its default when you name none, and the answer says which catalogue that was. Rows are interleaved one archive at a time. No score orders them against each other, and 'sort' is applied inside each archive rather than across them: a year is the date of an edition in one place and the date on a catalogue record in another, so there is no date order that spans the answer. 'oldest' and 'newest' order on a date field carrying a year and no era, so a date before the common era is filed there as a year of this one, and a record stating no date is placed by a stand-in rather than by its age. The first row of a date order is therefore not established as the oldest or newest thing an archive holds, the notes count the rows carrying no year, and this server orders nothing itself. Every count in 'per_source' is that archive's own and counts something of its own. They are never added together, and there is no total across archives. The catalogues read the words given in different ways, and 'per_source' says which each one does. One answers only where every word appears, so a question written as a sentence comes back empty; another scores the words and answers with the records it ranks highest, so a row of its can carry only some of them. Either way it is the words: a character that is neither a letter nor a digit is no word to an index, and 'non_word_characters' lists any the query carried. A name is also filed under more than one spelling, so further wordings are derived from the query and asked for their union. It costs nothing extra when the words as asked already answer. Every wording sent is named in 'per_source' with what it returned, every row carries the wording that returned it in 'found_by_query', and 'fan_out' turns the derivation off. A row's 'media_type' is the word that record carries for the kind of thing, which is often none of the names this argument takes: those are the divisions of a catalogue, and 'media_types' publishes them per archive. A row states no terms of reuse. Read the record with get_item for what that record itself says, and read silence as silence. Use search_inside for a phrase printed on a page: this tool reads catalogue records and knows nothing of what a book says, so a sentence given here matches only where a catalogue happens to carry it. Answers take several seconds, because one of the archives publishes a request ceiling this server keeps to.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300,
+            "description": "A title, a creator, a subject, or plain words."
+          },
+          "media_type": {
+            "description": "The kind of material, in the vocabulary of whichever archive uses that name. the Internet Archive files texts, movies, audio, image, software, data, web; the Library of Congress files books, photos, maps, audio, film-and-videos, manuscripts, notated-music, newspapers; the Bibliothèque nationale de France files work. The names are the union of those vocabularies rather than a shared one, so an archive that does not use the name you give is named as absent rather than asked under another. Naming none leaves an archive that searches every kind unnarrowed and asks an archive that keeps one catalogue per kind for its own default.",
+            "type": "string",
+            "enum": [
+              "audio",
+              "books",
+              "data",
+              "film-and-videos",
+              "image",
+              "manuscripts",
+              "maps",
+              "movies",
+              "newspapers",
+              "notated-music",
+              "photos",
+              "software",
+              "texts",
+              "web",
+              "work"
+            ]
+          },
+          "year_from": {
+            "description": "Earliest year, in each archive's own reading of what a year is. Given with 'year_to', it must not be the later of the two: a range running backwards names no year and is refused rather than read differently by each archive.",
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 2100
+          },
+          "year_to": {
+            "description": "Latest year, in each archive's own reading of what a year is. It cannot be earlier than 'year_from'.",
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 2100
+          },
+          "sort": {
+            "default": "relevance",
+            "description": "Applied inside each archive. The merged list stays interleaved, because no order runs across archives. 'oldest' and 'newest' run on a date field carrying a year and no era, and a record stating no date is placed by a stand-in, so neither end of such an order is a claim about age.",
+            "type": "string",
+            "enum": ["relevance", "newest", "oldest", "title"]
+          },
+          "limit": {
+            "default": 5,
+            "description": "Rows to take from each archive, so one archive cannot fill the whole list.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 25
+          },
+          "page": {
+            "default": 1,
+            "description": "Which page of rows, from 1. Each archive is paged separately.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "fan_out": {
+            "default": true,
+            "description": "Whether to derive further wordings from the query and ask each archive for the union of what they return. A question written as a sentence returns nothing where every word given has to appear, and the records an index scores highest where it does not, and a spelling of a name is not the only one a catalogue files it under. An archive is asked a derived wording only when the words as asked did not return as many rows as 'limit', so a query that works costs one request. Set false to send exactly the words given. 'per_source' names every wording, sent or not, and each row names the one that returned it.",
+            "type": "boolean"
+          },
+          "sources": {
+            "description": "Archives to ask, by id. Left out, they are all asked, which is the point of this tool.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["archive", "loc", "bnf"]
+            }
+          }
+        },
+        "required": ["query"],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "Pass this to get_item. It names its archive, so nothing is guessed."
+                },
+                "source": {
+                  "type": "string"
+                },
+                "source_name": {
+                  "type": "string"
+                },
+                "identifier": {
+                  "type": "string"
+                },
+                "title": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "creator": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "year": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What this archive calls a year. Read 'per_source' for what it was measured on before comparing two of them."
+                },
+                "date": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The date exactly as published, which is often a range or a phrase."
+                },
+                "media_type": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What this archive calls the kind of thing, in its own vocabulary."
+                },
+                "source_url": {
+                  "type": "string"
+                },
+                "downloads": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Null on an archive that publishes no such count."
+                },
+                "location": {
+                  "anyOf": [
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Places the record is catalogued under. Null on an archive that files no place against a catalogue row, which is a different thing from a record catalogued nowhere."
+                },
+                "online": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Whether a digitised copy can be read online. Null on an archive that states nothing about a copy against a catalogue row."
+                },
+                "identifier_provisional": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "True where the archive itself calls this identifier provisional: it can be replaced once a cataloguer settles the record, so a citation carrying it can stop naming anything. Null on an archive that mints one kind of identifier and says nothing about settling it, which is not the same as an archive stating this one is settled."
+                },
+                "found_by_query": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The wording this archive was given that returned this row. It is the query as you wrote it unless a further wording was derived, in which case the row answers that wording's words and not the rest of the question."
+                },
+                "found_by_derivation": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "How that wording was arrived at from the question, in words."
+                }
+              },
+              "required": [
+                "id",
+                "source",
+                "source_name",
+                "identifier",
+                "title",
+                "creator",
+                "year",
+                "date",
+                "media_type",
+                "source_url",
+                "downloads",
+                "location",
+                "online",
+                "identifier_provisional",
+                "found_by_query",
+                "found_by_derivation"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "item_count": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Rows in this answer, across every archive. Never a total of what exists."
+          },
+          "per_source": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["answered", "failed", "absent"],
+                  "description": "'answered' means it replied. 'failed' means it was asked and did not. 'absent' means it was never asked, and 'absent_because' says why."
+                },
+                "stage": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": ["search", "read"]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Which moment this report is about: the search that looks for records, or the read that opens one. Null on an archive that was never asked. A search that did not answer and a search that answered before a read failed are different statements."
+                },
+                "absent_because": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Why this archive was left out. Null unless the status is absent."
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "Rows this archive contributed to the answer."
+                },
+                "reported_total": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What this archive said it saw. Null when it states no number at all."
+                },
+                "reported_total_means": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What 'reported_total' counts on this archive. The archives count different things and these numbers are never added together."
+                },
+                "skipped": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "Rows this archive sent in a shape the server could not read, and left out of this answer. Always a count, so it reads the same way on every answer. Rows served out of a cache were counted the same way when they were first read, and 'cached' marks an answer whose count can be short of a drop nobody kept a record of."
+                },
+                "more_on_this_archive": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Whether this archive says it holds matches beyond the page just read. Raise 'page' to read them. Null where it states no total, and on an archive that was never asked."
+                },
+                "ordered_on": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What this archive ordered its own rows on. No order runs across archives."
+                },
+                "media_type_asked": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The name this archive was asked to look under, in its own vocabulary. Null where it searches every kind at once."
+                },
+                "attribution": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What to say when repeating what this archive contributed, as this archive states it for this answer. An archive whose licence asks for the date its metadata was retrieved carries that date here. Null on an archive that was never asked."
+                },
+                "searches_on": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The fields this archive matched the query against. The archives read different ones, so the same words are not the same question everywhere, and a name given to an index over titles alone comes back as the works written about that person."
+                },
+                "row_describes": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What one row from this archive is: a copy it holds, a record in a catalogue, or a work as an entity whose editions are records of their own. Rows carry the same fields and describe different kinds of thing."
+                },
+                "filters_dropped": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "filter": {
+                        "type": "string",
+                        "description": "The narrowing, named as the argument that carries it."
+                      },
+                      "because": {
+                        "type": "string",
+                        "description": "Why this archive never received it."
+                      }
+                    },
+                    "required": ["filter", "because"],
+                    "additionalProperties": false
+                  },
+                  "description": "Narrowings you asked for that this archive never received, because its catalogue cannot apply them. Its rows were not narrowed by them, and a row from it that happens to satisfy one is a coincidence rather than a filter. Empty when it received every narrowing asked for."
+                },
+                "queries": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "type": "string",
+                        "description": "The words this archive was given, exactly as they were sent."
+                      },
+                      "derivation": {
+                        "type": "string",
+                        "description": "How this wording was arrived at from the question, in words."
+                      },
+                      "ran": {
+                        "type": "boolean",
+                        "description": "Whether it was sent. False means it was derived and withheld."
+                      },
+                      "count": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Rows the archive returned for this wording. Zero is that wording finding nothing, which is a statement about the wording. Null when it was not sent, or did not answer."
+                      },
+                      "added": {
+                        "anyOf": [
+                          {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Rows this wording contributed that an earlier one had not already returned. Null when it was not sent, or did not answer."
+                      },
+                      "not_run_because": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Why it was withheld. Null when it was sent."
+                      },
+                      "error": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "code": {
+                                "type": "string"
+                              },
+                              "message": {
+                                "type": "string"
+                              },
+                              "hint": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["code", "message"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "Why this wording did not answer. Null when it did, or was never sent."
+                      }
+                    },
+                    "required": [
+                      "query",
+                      "derivation",
+                      "ran",
+                      "count",
+                      "added",
+                      "not_run_because",
+                      "error"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "description": "Every wording derived for this archive, in the order they were tried, with what each one returned and why any was withheld. Retyping one of them reproduces its rows by hand. Empty on a call that carries no query."
+                },
+                "year_means": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What a 'year' on this archive's rows was measured on."
+                },
+                "publishes_page_number": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Whether this archive's full-text index holds a leaf number. False makes every 'page_number' from it null by nature."
+                },
+                "corpus": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What body of material this archive's full-text index reads. Null where this answer did not read it."
+                },
+                "requires_every_word": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Whether the index this answer put the words to answers only where every word given appears. It covers the words: a character that is neither a letter nor a digit is not a word to an index, and those are listed in 'non_word_characters' instead. False means the index ranks the words and answers with what it scores highest, so one of its rows can carry only some of them. Null on an archive that was not asked."
+                },
+                "cached": {
+                  "type": "boolean",
+                  "description": "Served from this server's short-lived in-memory cache."
+                },
+                "error": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "hint": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["code", "message"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Why this archive did not answer. Null when it did."
+                }
+              },
+              "required": [
+                "source",
+                "name",
+                "status",
+                "stage",
+                "absent_because",
+                "count",
+                "reported_total",
+                "reported_total_means",
+                "skipped",
+                "more_on_this_archive",
+                "ordered_on",
+                "media_type_asked",
+                "attribution",
+                "searches_on",
+                "row_describes",
+                "filters_dropped",
+                "queries",
+                "year_means",
+                "publishes_page_number",
+                "corpus",
+                "requires_every_word",
+                "cached",
+                "error"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "queries_run": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Requests this server sent for this answer, counting every wording on every archive. Each archive's own wordings are in 'per_source'."
+          },
+          "media_types": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "asked_with": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The name this archive was asked under. Null where it searches every kind."
+                },
+                "vocabulary": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Every name this archive takes as the 'media_type' argument, which is how its catalogue is divided. The 'media_type' on a row is the word that record carries, and is often none of these."
+                }
+              },
+              "required": ["source", "name", "asked_with", "vocabulary"],
+              "additionalProperties": false
+            },
+            "description": "Which name each archive was asked under, published rather than reconciled, so a caller can map the vocabularies once and read what was actually searched."
+          },
+          "non_word_characters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Characters in the query that are neither letters nor digits. These catalogues answer on words, so a row here can carry none of them, and 'requires_every_word' covers the words that were given rather than these."
+          },
+          "order": {
+            "type": "string",
+            "description": "How the list was built, in words."
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "query",
+          "page",
+          "items",
+          "item_count",
+          "per_source",
+          "queries_run",
+          "media_types",
+          "non_word_characters",
+          "order",
+          "notes"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    },
+    {
+      "name": "get_item",
+      "title": "Read one record, routed by the archive its identifier names",
+      "description": "Read one record in full from the archive its identifier names: what it is, who made it, when, what the archive says about it, and what a reader can open. 'identifier' must come from search_inside or search_items. It names the archive, so this reads the right one without guessing; a string no archive would have minted is refused, and a shape more than one archive mints is refused rather than sent to a guess, because sending it anywhere answers about the wrong thing. Terms of reuse come back on every read and belong to that record alone. A record stating none has granted nothing, and silence is never read as permission. 'sections' decides what else comes back, and the answer names what was left out and what this archive files nothing under: a field empty because nobody asked for it is a different thing from a field the archive never fills. 'description_means' says what the archive files under the field this reads a description out of, which holds an account of the thing on one record and a line of the catalogue entry on the next. Long prose is returned one window at a time: 'text_offset' says where to resume, and a window ends at a line boundary. An offset past the end says so rather than answering with an empty description. An answer can take several seconds, because one of the archives publishes a request ceiling this server keeps to.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "From a search, such as 'archive:mobydickorwhale01melv' or 'loc:sn83030214/1900-01-01/ed-1/seq-1'."
+          },
+          "sections": {
+            "default": ["description"],
+            "description": "Which parts to return besides the record's identity and its terms of reuse.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["description", "subjects", "copies", "context"]
+            }
+          },
+          "max_copies": {
+            "default": 10,
+            "description": "Copies to list. The answer says how many more the record holds.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50
+          },
+          "text_offset": {
+            "default": 0,
+            "description": "Where to resume in the record's prose, in characters from its start.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "max_text_chars": {
+            "default": 1500,
+            "description": "Characters of prose to return. The text block shows roughly the first 1400 of them and the whole window is in the structured output. The answer says where to resume.",
+            "type": "integer",
+            "minimum": 200,
+            "maximum": 8000
+          }
+        },
+        "required": ["identifier"],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "source_name": {
+                "type": "string"
+              },
+              "identifier": {
+                "type": "string"
+              },
+              "title": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "creator": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "year": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "What this archive calls a year. 'year_means' says what it was measured on."
+              },
+              "year_means": {
+                "type": "string"
+              },
+              "date": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The date exactly as published."
+              },
+              "media_type": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "source_url": {
+                "type": "string"
+              },
+              "attribution": {
+                "type": "string",
+                "description": "What to say when repeating this record, as its archive states it. An archive whose licence asks for the date its metadata was retrieved carries that date here."
+              },
+              "identifier_provisional": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "True where the archive itself calls this identifier provisional: it can be replaced once a cataloguer settles the record. Null on an archive that mints one kind of identifier and says nothing about settling it."
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The window of this record's description that 'text_window' describes. 'description_means' says what this archive files under that name, which is not always prose about the thing."
+              },
+              "description_means": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "What the field this description was read out of holds on this archive. Null on an archive no description is read from."
+              },
+              "notes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Further prose the archive files apart from the description. Empty on an archive that files none, which 'fields_not_read_from_this_archive' names."
+              },
+              "subjects": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "rights": {
+                "type": "object",
+                "properties": {
+                  "statement": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "What this record says about reuse, in the archive's own words."
+                  },
+                  "url": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The licence this record points at, when it points at one."
+                  },
+                  "covers": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "What the statement covers, where it covers more than this record. Null on an archive setting terms per deposit, where a statement covers the record it sits on and no other."
+                  },
+                  "note": {
+                    "type": "string",
+                    "description": "How to read the fields above for this record, including when they are null."
+                  }
+                },
+                "required": ["statement", "url", "covers", "note"],
+                "additionalProperties": false
+              },
+              "copies": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "label": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Null where the archive names the copy nothing."
+                    },
+                    "format": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "description": "Null on an archive that states no format for a served copy."
+                    },
+                    "url": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": ["label", "format", "url"],
+                  "additionalProperties": false
+                }
+              },
+              "copies_available": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "Copies this server read off the record, before 'max_copies' was applied. It counts what a reader can open, so it is smaller than the archive's own file count wherever that count includes the archive's bookkeeping."
+              },
+              "generated_entries": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991,
+                "description": "Entries the archive lists against this record that are not copies of the thing: its own bookkeeping, the by-products of its processing, or an image it attaches to illustrate the record. They were left out of 'copies' and are on the archive's own page."
+              },
+              "context": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Collections, divisions and shelves the record sits in."
+              }
+            },
+            "required": [
+              "id",
+              "source",
+              "source_name",
+              "identifier",
+              "title",
+              "creator",
+              "year",
+              "year_means",
+              "date",
+              "media_type",
+              "source_url",
+              "attribution",
+              "identifier_provisional",
+              "description",
+              "description_means",
+              "notes",
+              "subjects",
+              "rights",
+              "copies",
+              "copies_available",
+              "generated_entries",
+              "context"
+            ],
+            "additionalProperties": false
+          },
+          "id_read_as": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How a raw identifier was routed, when it was not spelled with its archive."
+          },
+          "sections_returned": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sections_omitted": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Sections this call did not ask for. A field belonging to one of these is empty for that reason alone."
+          },
+          "fields_not_read_from_this_archive": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Fields this server reads nothing into from this archive. A field named here is empty for every record it returns, which is a different thing from a record that left it blank."
+          },
+          "text_window": {
+            "type": "object",
+            "properties": {
+              "offset": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "returned_chars": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "total_chars": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "next_offset": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Where to resume. Null when the prose ended here."
+              }
+            },
+            "required": ["offset", "returned_chars", "total_chars", "next_offset"],
+            "additionalProperties": false,
+            "description": "Which part of the record's prose this answer carries."
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "item",
+          "id_read_as",
+          "sections_returned",
+          "sections_omitted",
+          "fields_not_read_from_this_archive",
+          "text_window",
+          "notes"
+        ],
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      },
+      "execution": {
+        "taskSupport": "forbidden"
+      }
+    }
+  ],
+  "version": "2.0.1"
+}
