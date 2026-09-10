@@ -300,7 +300,7 @@ function creditFor(retrievedAt: string): string {
   const moment = text(retrievedAt);
   return moment === null
     ? BNF_PROFILE.attribution
-    : `${BNF_PROFILE.attribution} — retrieved ${moment}`;
+    : `${BNF_PROFILE.attribution}, retrieved ${moment}`;
 }
 
 /** Everyone the record credits with a work, in the words the record uses. */

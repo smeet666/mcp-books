@@ -895,7 +895,7 @@ export function creditLine(contributors: Array<{ attribution: string; url?: stri
     return "No archive contributed to this answer.";
   }
   const names = contributors.map((entry) =>
-    entry.url ? `${entry.attribution} — ${quoteForeign(entry.url)}` : entry.attribution,
+    entry.url ? `${entry.attribution} (${quoteForeign(entry.url)})` : entry.attribution,
   );
   return names.join("\n");
 }
