@@ -78,7 +78,7 @@
     "mcp-archiveorg": "^2.0.1",
     "mcp-databnf": "^2.1.2",
     "mcp-libraryofcongress": "^3.0.1",
-    "zod": "^4.6.0"
+    "zod": "^4.6.1"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.12",
