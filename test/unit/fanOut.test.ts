@@ -482,10 +482,9 @@ describe("the union of what came back", () => {
       await runSearchInside(client, insideArgs({ query: "wet fog", limit: 1 })),
     );
 
-    expect(payload.hits.map((hit) => hit.id).sort()).toEqual([
-      "archive:shared0001",
-      "loc:shared0001",
-    ]);
+    expect(payload.hits.map((hit) => hit.id).sort((a, b) => Number(a > b) - Number(a < b))).toEqual(
+      ["archive:shared0001", "loc:shared0001"],
+    );
   });
 
   it("calls the order its own rather than any archive's judgement of relevance", async () => {

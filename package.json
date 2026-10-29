@@ -1,6 +1,6 @@
 {
   "name": "mcp-books",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "description": "MCP server that searches the Internet Archive, the Library of Congress and data.bnf.fr at once, inside scanned text and across catalogues. No API key required.",
   "keywords": [
     "mcp",
@@ -81,12 +81,12 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.12",
-    "@types/node": "24.13.4",
-    "@vitest/coverage-v8": "4.1.11",
-    "prettier": "3.9.6",
-    "tsup": "8.5.1",
+    "@biomejs/biome": "2.6.3",
+    "@types/node": "24.19.2",
+    "@vitest/coverage-v8": "5.0.5",
+    "prettier": "3.9.10",
+    "tsup": "9.0.0",
     "typescript": "5.9.3",
-    "vitest": "4.1.11"
+    "vitest": "5.0.5"
   }
 }

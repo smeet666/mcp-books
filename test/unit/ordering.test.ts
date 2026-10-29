@@ -59,13 +59,13 @@ describe("a match whose excerpt is the opening of a page", () => {
     const payload = await inside();
 
     expect(payload.hit_count).toBe(4);
-    expect(payload.hits.map((hit) => hit.id).sort()).toEqual(
+    expect(payload.hits.map((hit) => hit.id).sort((a, b) => Number(a > b) - Number(a < b))).toEqual(
       [
         "archive:voyageofthecormorant00pell",
         "archive:harbourpapers1883",
         "loc:sn00000001/1884-03-02/ed-1",
         "loc:sn00000002/1891-11-19/ed-2",
-      ].sort(),
+      ].sort((a, b) => Number(a > b) - Number(a < b)),
     );
   });
 
