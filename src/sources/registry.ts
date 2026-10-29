@@ -57,7 +57,7 @@ export const SOURCE_IDS: readonly SourceId[] = SOURCE_PROFILES.map((profile) => 
  */
 export const MEDIA_TYPES: readonly string[] = [
   ...new Set(SOURCE_PROFILES.flatMap((profile) => profile.mediaTypes)),
-].sort();
+].sort((a, b) => Number(a > b) - Number(a < b));
 
 /** The spacing an archive gets: its own, or a wider one a setting asked for. */
 export function pacingFor(config: Config, ownMs: number): number {

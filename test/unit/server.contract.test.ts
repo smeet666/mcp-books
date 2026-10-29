@@ -34,7 +34,9 @@ const TOOLS = ["search_inside", "search_items", "get_item"];
 
 describe("what the server offers", () => {
   it("registers exactly the three tools", () => {
-    expect(Object.keys(registered()).sort()).toEqual([...TOOLS].sort());
+    expect(Object.keys(registered()).sort((a, b) => Number(a > b) - Number(a < b))).toEqual(
+      [...TOOLS].sort((a, b) => Number(a > b) - Number(a < b)),
+    );
   });
 
   it("declares every tool as read-only and non-destructive", () => {
