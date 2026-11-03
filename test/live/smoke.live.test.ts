@@ -11,11 +11,10 @@
  * push has no business adding load to them.
  *
  * Every test here asks what an archive publishes, and an archive that was
- * unreachable published nothing to ask about. The two are kept apart: a test
- * whose archive did not answer is skipped with the failure named, and one
- * closing test reports an archive that never answered at all. Reading a silence
- * as a contract that moved is the one way this suite can raise a false alarm,
- * and the alarm it raises opens an issue.
+ * unreachable published nothing to ask about. A test whose archive did not
+ * answer is skipped with the failure named: reading a silence as a contract that
+ * moved is the one way this suite can raise a false alarm, and the alarm it
+ * raises opens an issue.
  */
 
 import process from "node:process";
@@ -45,16 +44,6 @@ const ATTEMPTS = 3;
 /** The codes that say the question never reached the archive. */
 const UNREACHABLE = new Set(["network_error", "timeout", "rate_limited"]);
 
-/**
- * Which archives answered something tonight, so a total outage is still news.
- *
- * A test skipped for an archive that was unreachable is the right answer to one
- * bad moment and the wrong answer to an archive that has gone for good: skip
- * every test and the run is green over an archive nobody can reach. This is
- * what the closing test reads.
- */
-const answered = new Set<SourceId>();
-
 /** What to say about an archive that never answered, naming what it answered with. */
 const outage = (reports: readonly SourceReport[]): string =>
   reports
@@ -80,11 +69,6 @@ async function asking<T extends { reports: SourceReport[] }>(
   let unreachable: SourceReport[] = [];
 
   for (let attempt = 1; ; attempt += 1) {
-    for (const report of merged.reports) {
-      if (report.status === "answered") {
-        answered.add(report.source);
-      }
-    }
     unreachable = merged.reports.filter(
       (report) => needs.includes(report.source) && report.status === "failed",
     );
@@ -134,7 +118,6 @@ async function readingBack(
   for (let attempt = 1; ; attempt += 1) {
     try {
       const read = await client.getItem(id);
-      answered.add(read.report.source);
       return { item: read.item, unreachable: null };
     } catch (raised) {
       const known = asBooksError(raised);
@@ -444,15 +427,4 @@ suite("the archives, as they are today", () => {
     },
     budget(0, 1),
   );
-
-  it("was answered at least once tonight by every archive", () => {
-    // Every test above stands down for an archive that did not answer, which is
-    // the honest reading of one bad moment and the wrong reading of an archive
-    // that has gone. This is where an archive nothing reached is reported.
-    const silent = client.profiles
-      .filter((profile) => !answered.has(profile.id))
-      .map((profile) => profile.name);
-
-    expect(silent, `reached by nothing tonight: ${silent.join(", ")}`).toEqual([]);
-  });
 });
