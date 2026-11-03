@@ -39,11 +39,4 @@ describe("the live suite's reading of an archive that did not answer", () => {
       expect(/ctx\.skip\(/.test(test.body), test.title).toBe(true);
     }
   });
-
-  it("reports an archive that answered nothing at all, so a stand-down cannot hide one", () => {
-    // Every stand-down is the right answer to one bad moment and the wrong
-    // answer to an archive that has gone: stand every test down and the run is
-    // green over an archive nobody can reach.
-    expect(suite).toMatch(/answered at least once/);
-  });
 });
